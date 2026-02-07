@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OnTime-bus tracking system</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style1.css">
+</head>
+<body>
+  <section class="bus-hero">
+    <img src="bus.png.jpeg" alt="bus image">
+    
+    <div class="project-title">
+      Where Is My Bus
+    </div>
+    </section>
+<!-- Header -->
+<header class="header">
+      <h1 class="logo">
+      <button class="menu-btn"onclick="toggledMenu()">☰</button>
+  <span class="time-icon">⏱️</span> OnTime
+</h1>
+<nav class="nav-menu">
+  <a href="#" class=""active">🏠 Home</a>
+  <a href="#">🛣️ Route</a>
+  <a href="#">📍 Track</a>
+  </nav>
+</div>
+    <button onclick="showlogin()">Login/Signup</button>
+</header>
+<div id="sideMenu"class="side-menu">
+  <a href="#">Booking Enquiry</a>
+  <a herf="#">Cancel Bus Booking</a>
+  <a href="#">Privacy Policy</a>
+  <a herf="#">help and Support</a>
+  <a herf="#">About</a></a>
+</div>
+
+<!-- Home / Index Section -->
+<section class="home">
+    <h2>Your Bus in On Time</h2>
+    <p>Enter route to get live updates</p>
+
+    <div class="route-search">
+        <input type="text" id="fromPlace" placeholder="From">
+        <span class="arrow">-></span>
+        <input type="text" id="toPlace"placeholder="To">
+        <button id="searchBtn"onclick="searchRoute()">Search</button>
+    </div>
+    <section id="routeSection" style="display:none;">
+  <table  id="routeTable" border="1" width="100%"cellpadding="10">
+    <thead>
+      <tr>
+        <th>Bus No</th>
+        <th>Route</th>
+        <th>From</th>
+        <th>To</th>
+        <th>Route</th>
+        <th>Time</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  </section> <div class="container">
+  <div class="date-box">
+  <div class="date-header">
+    <span class="icon">📅</span>
+    <div>
+      <small>Date of Departure</small>
+      <h3 id="selectedDate"></h3>
+    </div>
+    <span class="select-text">Select Date</span>
+  </div>
+
+  <div class="date-list" id="dateList"></div>
+
+  <button class="check-btn">CHECK AVAILABILITY</button>
+</div>
+
+<section id="liveInfo"class="live-info" style="display:none;">
+    <h2>live bus information</h2>
+    <div class="info-card">
+        <p><strong>Bus Number:</strong><span id="busNo"></span></p>
+        <p><strong>Route:</strong><span id="busRoute"></span></p>
+        <p><strong>Current stop:</strong><span id="currentStop"></span></p>
+       <p><strong>ETA:</strong><span id="eta"></span></p>
+       <p><strong>Status:</strong><span id="status"></span></p>
+       </div>
+       </section>
+       <button onclick="logout()">Logout</button>
+       <!-- Action Buttons Section -->
+<section id="actionButtons" class="action-buttons" style="display:none;">
+  <h2>Actions</h2>
+  
+  <div class="buttons-container">
+    <button onclick="trackBus()">🚍 Track on Map</button>
+    <button onclick="viewRoute()">🛣 View Full Route</button>
+    <button onclick="nearbyStops()">📍 Nearby Stops</button>
+  </div>
+</section>
+<section id="mapSection"style="display:none;padding:30px;">
+<h2>Bus Loction</h2>
+<div id="map"style="height:400px;width:100%;border-radius:10px;"></div>
+</section>
+<script src="mapprev.js"></script>
+
+    <section class="promo-section">
+      <img src="bus-offer.jpeg" alt="Bus Ticket Booking Offer">
+      </section>
+    <footer class="footer">
+        <p>
+            <a href="#">About</a>|
+            <a href="#">Contact</a>|
+            <a href="#">Help</a>
+        </p>
+        <p>* 2026 Bus Tracking Booking.All rights reserved.</p>
+    </footer>
+    <script>
+    document.getElementById("userName").innerText=localStroage.getItem("username");
+  </script>
+  <script>
+    function toggledMenu(){
+      document.getElementById("sideMenu").classList.toggle("show");
+    }
+  </script>
+  <script>
+    function goToLogin(){
+      window.location.href="login.html";
+    }
+  </script>
+  <script src="script.js"></script>
+
+  </body>
+</html>
