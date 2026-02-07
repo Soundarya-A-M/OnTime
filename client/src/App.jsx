@@ -6,6 +6,7 @@ import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 import UserDashboard from './pages/User/Dashboard';
 import TrackBus from './pages/User/TrackBus';
+import BookTicket from './pages/User/BookTicket';
 import DriverDashboard from './pages/Driver/Dashboard';
 import AdminDashboard from './pages/Admin/Dashboard';
 import LandingPage from './pages/LandingPage';
@@ -56,6 +57,14 @@ function App() {
           element={
             <ProtectedRoute>
               <TrackBus />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book-ticket"
+          element={
+            <ProtectedRoute allowedRoles={['passenger']}>
+              <BookTicket />
             </ProtectedRoute>
           }
         />

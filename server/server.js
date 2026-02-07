@@ -49,7 +49,11 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+    tls: true,
+    tlsAllowInvalidCertificates: true,
+    serverSelectionTimeoutMS: 5000
+})
     .then(() => {
         console.log('✅ Connected to MongoDB');
     })

@@ -52,7 +52,7 @@ const UserDashboard = () => {
                     </Link>
 
                     <Link
-                        to="/track"
+                        to="/book-ticket"
                         className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition group"
                     >
                         <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition">
@@ -112,10 +112,10 @@ const UserDashboard = () => {
                                         </div>
                                         <span
                                             className={`px-3 py-1 rounded-full text-xs font-medium ${booking.status === 'confirmed'
-                                                    ? 'bg-green-500/20 text-green-300'
-                                                    : booking.status === 'pending'
-                                                        ? 'bg-yellow-500/20 text-yellow-300'
-                                                        : 'bg-red-500/20 text-red-300'
+                                                ? 'bg-green-500/20 text-green-300'
+                                                : booking.status === 'pending'
+                                                    ? 'bg-yellow-500/20 text-yellow-300'
+                                                    : 'bg-red-500/20 text-red-300'
                                                 }`}
                                         >
                                             {booking.status}
