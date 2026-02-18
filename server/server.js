@@ -23,10 +23,15 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
+// Parse allowed origins from CLIENT_URL (supports comma-separated values)
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+    .split(',')
+    .map(origin => origin.trim());
+
 // Initialize Socket.IO
 const io = new Server(httpServer, {
     cors: {
-        origin: process.env.CLIENT_URL || 'http://localhost:5173',
+        origin: allowedOrigins,
         methods: ['GET', 'POST'],
         credentials: true
     }
@@ -34,7 +39,7 @@ const io = new Server(httpServer, {
 
 // Middleware
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: allowedOrigins,
     credentials: true
 }));
 app.use(express.json());
