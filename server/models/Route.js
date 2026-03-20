@@ -12,38 +12,46 @@ const routeSchema = new mongoose.Schema({
         unique: true,
         trim: true
     },
+    // New geo-aware fields
+    sourceCity: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    destinationCity: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    sourceCoordinates: {
+        lat: { type: Number, default: null },
+        lng: { type: Number, default: null }
+    },
+    destinationCoordinates: {
+        lat: { type: Number, default: null },
+        lng: { type: Number, default: null }
+    },
+    polyline: {
+        type: String,
+        default: null
+    },
+    // Existing fields retained for backward compatibility
     stops: [{
-        name: {
-            type: String,
-            required: true
-        },
+        name: { type: String, required: true },
         coordinates: {
-            lat: {
-                type: Number,
-                required: true,
-                min: -90,
-                max: 90
-            },
-            lng: {
-                type: Number,
-                required: true,
-                min: -180,
-                max: 180
-            }
+            lat: { type: Number, required: true, min: -90, max: 90 },
+            lng: { type: Number, required: true, min: -180, max: 180 }
         },
-        order: {
-            type: Number,
-            required: true
-        }
+        order: { type: Number, required: true }
     }],
     distance: {
         type: Number,
-        required: true,
+        default: 0,
         min: 0
     },
     estimatedDuration: {
         type: Number,
-        required: true,
+        default: 0,
         min: 0
     },
     isActive: {

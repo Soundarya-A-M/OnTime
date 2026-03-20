@@ -9,6 +9,10 @@ import TrackBus from './pages/User/TrackBus';
 import BookTicket from './pages/User/BookTicket';
 import DriverDashboard from './pages/Driver/Dashboard';
 import AdminDashboard from './pages/Admin/Dashboard';
+import RouteManagement from './pages/Admin/RouteManagement';
+import StageManagement from './pages/Admin/StageManagement';
+import BusTypeFareManagement from './pages/Admin/BusTypeFareManagement';
+import AddBus from './pages/Admin/AddBus';
 import LandingPage from './pages/LandingPage';
 import { useAuthStore } from './store/authStore';
 
@@ -85,6 +89,38 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/routes"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <RouteManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/stages"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <StageManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/bus-fares"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <BusTypeFareManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/add-bus"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AddBus />
             </ProtectedRoute>
           }
         />

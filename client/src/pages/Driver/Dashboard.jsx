@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Play, Square, MapPin, Clock } from 'lucide-react';
+import { Play, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -11,6 +11,9 @@ const DriverDashboard = () => {
     const [myBus, setMyBus] = useState(null);
     const [isSharing, setIsSharing] = useState(false);
     const [watchId, setWatchId] = useState(null);
+    const [delayMinutes, setDelayMinutes] = useState('');
+    const [delayReason, setDelayReason] = useState('');
+    const [reportingDelay, setReportingDelay] = useState(false);
 
     useEffect(() => {
         fetchMyBus();
@@ -78,6 +81,8 @@ const DriverDashboard = () => {
                 toast.success('Trip ended!');
                 setCurrentTrip(null);
                 stopLocationSharing();
+                setDelayMinutes('');
+                setDelayReason('');
 
                 // Emit trip end event
                 socket.emit('driver:trip-end', {
@@ -87,6 +92,35 @@ const DriverDashboard = () => {
             }
         } catch (error) {
             toast.error(error.message || 'Failed to end trip');
+        }
+    };
+
+    const handleReportDelay = async (e) => {
+        e.preventDefault();
+        if (!currentTrip) return;
+
+        const mins = parseInt(delayMinutes, 10);
+        if (!mins || mins <= 0) {
+            toast.error('Enter a valid delay in minutes');
+            return;
+        }
+
+        setReportingDelay(true);
+        try {
+            const response = await api.post(`/trips/${currentTrip._id}/delay`, {
+                delayMinutes: mins,
+                delayReason: delayReason.trim()
+            });
+
+            if (response.success) {
+                toast.success(`⚠️ Delay of ${mins} min reported to all passengers!`);
+                setDelayMinutes('');
+                setDelayReason('');
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to report delay');
+        } finally {
+            setReportingDelay(false);
         }
     };
 
@@ -215,6 +249,53 @@ const DriverDashboard = () => {
                     )}
                 </div>
 
+                {/* Report Delay — only visible during an active trip */}
+                {currentTrip && (
+                    <div className="bg-amber-950/40 backdrop-blur-lg border border-amber-500/30 rounded-2xl p-6 mb-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white">Report Delay</h2>
+                        </div>
+                        <p className="text-gray-400 text-sm mb-4">Alert all passengers instantly about a service delay.</p>
+
+                        <form onSubmit={handleReportDelay} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Delay (minutes)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    value={delayMinutes}
+                                    onChange={(e) => setDelayMinutes(e.target.value)}
+                                    placeholder="e.g. 15"
+                                    className="w-full px-4 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/60 transition"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Reason <span className="text-gray-500">(optional)</span></label>
+                                <input
+                                    type="text"
+                                    value={delayReason}
+                                    onChange={(e) => setDelayReason(e.target.value)}
+                                    placeholder="e.g. Heavy traffic, Road block..."
+                                    className="w-full px-4 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/60 transition"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={reportingDelay}
+                                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Send className="w-4 h-4" />
+                                <span>{reportingDelay ? 'Sending...' : 'Send Delay Alert'}</span>
+                            </button>
+                        </form>
+                    </div>
+                )}
+
                 {/* Instructions */}
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6">
                     <h3 className="text-lg font-semibold text-white mb-3">Instructions</h3>
@@ -226,6 +307,10 @@ const DriverDashboard = () => {
                         <li className="flex items-start space-x-2">
                             <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
                             <span>Your location will be shared automatically with passengers</span>
+                        </li>
+                        <li className="flex items-start space-x-2">
+                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
+                            <span>Use <strong className="text-amber-300">Report Delay</strong> to instantly alert passengers of any delays</span>
                         </li>
                         <li className="flex items-start space-x-2">
                             <Square className="w-4 h-4 mt-0.5 flex-shrink-0" />

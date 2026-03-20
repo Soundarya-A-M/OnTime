@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bus, MapPin, Calendar, Users, CreditCard, ArrowRight } from 'lucide-react';
+import { Bus, MapPin, Calendar, Users, CreditCard, ArrowRight, Loader2 } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 
@@ -11,7 +11,7 @@ const BookTicket = () => {
     const [selectedRoute, setSelectedRoute] = useState(null);
     const [selectedBus, setSelectedBus] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [bookingStep, setBookingStep] = useState(1); // 1: Select Route, 2: Select Bus, 3: Select Seats, 4: Confirm
+    const [bookingStep, setBookingStep] = useState(1); // 1: Route, 2: Bus, 3: Stages, 4: Seats, 5: Confirm
     const [selectedSeats, setSelectedSeats] = useState([]);
     const [bookedSeats, setBookedSeats] = useState([]);
     const [bookingData, setBookingData] = useState({
@@ -20,53 +20,92 @@ const BookTicket = () => {
         passengerPhone: ''
     });
 
-    useEffect(() => {
-        fetchRoutes();
-    }, []);
+    // Stage-based fare
+    const [stages, setStages] = useState([]);
+    const [fromStage, setFromStage] = useState(null);
+    const [toStage, setToStage] = useState(null);
+    const [fareInfo, setFareInfo] = useState(null);
+    const [fareLoading, setFareLoading] = useState(false);
+
+    useEffect(() => { fetchRoutes(); }, []);
 
     const fetchRoutes = async () => {
         try {
             const response = await api.get('/routes');
-            if (response.success) {
-                setRoutes(response.data.routes);
-            }
-        } catch (error) {
-            toast.error('Failed to fetch routes');
-        } finally {
-            setLoading(false);
-        }
+            if (response.success) setRoutes(response.data.routes);
+        } catch { toast.error('Failed to fetch routes'); }
+        finally { setLoading(false); }
     };
 
     const fetchBusesForRoute = async (routeId) => {
         try {
             const response = await api.get(`/buses?routeId=${routeId}&status=active`);
+            if (response.success) setBuses(response.data.buses);
+        } catch { toast.error('Failed to fetch buses'); }
+    };
+
+    const fetchStagesForRoute = async (routeId) => {
+        try {
+            const response = await api.get(`/stages/${routeId}`);
             if (response.success) {
-                setBuses(response.data.buses);
+                setStages(response.data.stages);
+                if (response.data.stages.length === 0) toast('No stages configured for this route yet', { icon: 'â„¹ï¸' });
             }
-        } catch (error) {
-            toast.error('Failed to fetch buses');
-        }
+        } catch { toast.error('Failed to fetch stages'); }
+    };
+
+    const fetchFare = async (fromId, toId, busId) => {
+        if (!fromId || !toId || !busId) return;
+        setFareLoading(true);
+        try {
+            const res = await api.get(`/fare/calculate?fromStageId=${fromId}&toStageId=${toId}&busId=${busId}`);
+            if (res.success) {
+                setFareInfo(res.data);
+            }
+        } catch (e) {
+            toast.error(e.message || 'Failed to calculate fare');
+            setFareInfo(null);
+        } finally { setFareLoading(false); }
     };
 
     const handleRouteSelect = (route) => {
-        setSelectedRoute(route);
+        setSelectedRoute(route); setSelectedBus(null);
+        setFromStage(null); setToStage(null); setFareInfo(null); setStages([]);
         fetchBusesForRoute(route._id);
         setBookingStep(2);
     };
 
     const handleBusSelect = (bus) => {
         setSelectedBus(bus);
-        // Simulate fetching booked seats (in real app, fetch from API)
-        setBookedSeats([]); // Removed pre-blocked seats as requested
+        setFromStage(null); setToStage(null); setFareInfo(null);
+        fetchStagesForRoute(selectedRoute._id);
+        setBookedSeats([]);
         setBookingStep(3);
     };
 
-    const toggleSeatSelection = (seatNumber) => {
-        if (bookedSeats.includes(seatNumber)) {
-            toast.error('This seat is already booked');
+    const handleFromStageSelect = (stage) => {
+        setFromStage(stage);
+        setToStage(null); setFareInfo(null);
+    };
+
+    const handleToStageSelect = (stage) => {
+        if (fromStage && stage.stageOrder <= fromStage.stageOrder) {
+            toast.error('Destination must come after boarding stage');
             return;
         }
+        setToStage(stage);
+        if (fromStage) fetchFare(fromStage._id, stage._id, selectedBus._id);
+    };
 
+    const proceedToSeats = () => {
+        if (!fromStage || !toStage) { toast.error('Select both boarding and destination stages'); return; }
+        if (!fareInfo) { toast.error('Fare not calculated yet'); return; }
+        setSelectedSeats([]);
+        setBookingStep(4);
+    };
+
+    const toggleSeatSelection = (seatNumber) => {
+        if (bookedSeats.includes(seatNumber)) { toast.error('This seat is already booked'); return; }
         if (selectedSeats.includes(seatNumber)) {
             setSelectedSeats(selectedSeats.filter(s => s !== seatNumber));
         } else {
@@ -75,15 +114,10 @@ const BookTicket = () => {
     };
 
     const handleBooking = async () => {
-        if (selectedSeats.length === 0) {
-            toast.error('Please select at least one seat');
-            return;
-        }
+        if (selectedSeats.length === 0) { toast.error('Please select at least one seat'); return; }
+        if (!bookingData.passengerName || !bookingData.passengerPhone) { toast.error('Please fill in all passenger details'); return; }
 
-        if (!bookingData.passengerName || !bookingData.passengerPhone) {
-            toast.error('Please fill in all passenger details');
-            return;
-        }
+        const totalAmount = fareInfo ? fareInfo.fare * selectedSeats.length : selectedSeats.length * 500;
 
         try {
             const response = await api.post('/bookings', {
@@ -92,22 +126,16 @@ const BookTicket = () => {
                 seats: selectedSeats.length,
                 seatNumbers: selectedSeats,
                 travelDate: bookingData.date,
-                passengerDetails: {
-                    name: bookingData.passengerName,
-                    phone: bookingData.passengerPhone
-                }
+                fromStop: fromStage?.stageName || '',
+                toStop: toStage?.stageName || '',
+                amount: totalAmount,
+                passengerDetails: { name: bookingData.passengerName, phone: bookingData.passengerPhone }
             });
-
-            if (response.success) {
-                toast.success('Ticket booked successfully!');
-                navigate('/dashboard');
-            }
-        } catch (error) {
-            toast.error(error.message || 'Failed to book ticket');
-        }
+            if (response.success) { toast.success('Ticket booked successfully!'); navigate('/dashboard'); }
+        } catch (error) { toast.error(error.message || 'Failed to book ticket'); }
     };
 
-
+    const totalFare = fareInfo ? fareInfo.fare * selectedSeats.length : selectedSeats.length * 500;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
@@ -120,41 +148,16 @@ const BookTicket = () => {
 
                 {/* Progress Steps */}
                 <div className="flex items-center justify-center mb-12">
-                    <div className="flex items-center space-x-4">
-                        {/* Step 1 */}
-                        <div className={`flex items-center space-x-2 ${bookingStep >= 1 ? 'text-purple-400' : 'text-gray-500'}`}>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bookingStep >= 1 ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                                1
-                            </div>
-                            <span className="font-medium hidden md:inline">Select Route</span>
-                        </div>
-                        <ArrowRight className="text-gray-500 w-4 h-4" />
-
-                        {/* Step 2 */}
-                        <div className={`flex items-center space-x-2 ${bookingStep >= 2 ? 'text-purple-400' : 'text-gray-500'}`}>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bookingStep >= 2 ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                                2
-                            </div>
-                            <span className="font-medium hidden md:inline">Select Bus</span>
-                        </div>
-                        <ArrowRight className="text-gray-500 w-4 h-4" />
-
-                        {/* Step 3 */}
-                        <div className={`flex items-center space-x-2 ${bookingStep >= 3 ? 'text-purple-400' : 'text-gray-500'}`}>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bookingStep >= 3 ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                                3
-                            </div>
-                            <span className="font-medium hidden md:inline">Select Seats</span>
-                        </div>
-                        <ArrowRight className="text-gray-500 w-4 h-4" />
-
-                        {/* Step 4 */}
-                        <div className={`flex items-center space-x-2 ${bookingStep >= 4 ? 'text-purple-400' : 'text-gray-500'}`}>
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${bookingStep >= 4 ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                                4
-                            </div>
-                            <span className="font-medium hidden md:inline">Confirm</span>
-                        </div>
+                    <div className="flex items-center space-x-2">
+                        {[{n:1,label:'Route'},{n:2,label:'Bus'},{n:3,label:'Stages'},{n:4,label:'Seats'},{n:5,label:'Confirm'}].map((s, i, arr) => (
+                            <>
+                                <div key={s.n} className={`flex items-center space-x-1 ${bookingStep >= s.n ? 'text-purple-400' : 'text-gray-500'}`}>
+                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${bookingStep >= s.n ? 'bg-purple-500 text-white' : 'bg-gray-700 text-gray-400'}`}>{s.n}</div>
+                                    <span className="font-medium hidden lg:inline text-sm">{s.label}</span>
+                                </div>
+                                {i < arr.length - 1 && <ArrowRight className="text-gray-500 w-4 h-4 flex-shrink-0" />}
+                            </>
+                        ))}
                     </div>
                 </div>
 
@@ -207,11 +210,8 @@ const BookTicket = () => {
                 {/* Step 2: Select Bus */}
                 {bookingStep === 2 && (
                     <div>
-                        <button
-                            onClick={() => setBookingStep(1)}
-                            className="text-purple-400 hover:text-purple-300 mb-6"
-                        >
-                            ← Back to Routes
+                        <button onClick={() => setBookingStep(1)} className="text-purple-400 hover:text-purple-300 mb-6">
+                            ← Back to Routes
                         </button>
                         <h2 className="text-2xl font-bold text-white mb-6">Select Your Bus</h2>
                         {buses.length === 0 ? (
@@ -219,24 +219,27 @@ const BookTicket = () => {
                         ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 {buses.map((bus) => (
-                                    <div
-                                        key={bus._id}
-                                        onClick={() => handleBusSelect(bus)}
-                                        className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 hover:bg-white/15 cursor-pointer transition"
-                                    >
+                                    <div key={bus._id} onClick={() => handleBusSelect(bus)}
+                                        className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 hover:bg-white/15 cursor-pointer transition">
                                         <div className="flex items-start justify-between mb-4">
                                             <div>
                                                 <h3 className="text-xl font-bold text-white mb-1">{bus.busNumber}</h3>
                                                 <p className="text-gray-300">Driver: {bus.driverId?.name || 'Not assigned'}</p>
                                             </div>
-                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
-                                                }`}>
-                                                {bus.status}
-                                            </span>
+                                            <div className="flex flex-col items-end gap-2">
+                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                                    bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
+                                                }`}>{bus.status}</span>
+                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                                    bus.busType === 'AC' ? 'bg-purple-500/20 text-purple-300' :
+                                                    bus.busType === 'Express' ? 'bg-blue-500/20 text-blue-300' :
+                                                    'bg-green-500/20 text-green-300'
+                                                }`}>{bus.busType || 'Ordinary'}</span>
+                                            </div>
                                         </div>
                                         <div className="flex items-center space-x-2 text-gray-300">
                                             <Users className="w-4 h-4" />
-                                            <span>{bus.capacity} seats available</span>
+                                            <span>{bus.capacity} seats</span>
                                         </div>
                                     </div>
                                 ))}
@@ -245,14 +248,107 @@ const BookTicket = () => {
                     </div>
                 )}
 
-                {/* Step 3: Select Seats */}
+                {/* Step 3: Select Stages & Calculate Fare */}
                 {bookingStep === 3 && (
+                    <div className="max-w-3xl mx-auto">
+                        <button onClick={() => setBookingStep(2)} className="text-purple-400 hover:text-purple-300 mb-6">
+                            ← Back to Buses
+                        </button>
+                        <h2 className="text-2xl font-bold text-white mb-6">Select Boarding & Destination Stage</h2>
+
+                        {stages.length === 0 ? (
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 text-yellow-300">
+                                âš ï¸ No stages configured for this route yet. Ask admin to add stages via the Stage Editor.
+                            </div>
+                        ) : (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {/* Boarding stage */}
+                                <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-5">
+                                    <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full bg-green-400 inline-block"></span>
+                                        Boarding Stage
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {stages.map(s => (
+                                            <button key={s._id} onClick={() => handleFromStageSelect(s)}
+                                                className={`w-full text-left px-4 py-3 rounded-xl transition ${
+                                                    fromStage?._id === s._id
+                                                        ? 'bg-green-500/30 border border-green-400 text-white'
+                                                        : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-transparent'
+                                                }`}>
+                                                <div className="font-medium">{s.stageName}</div>
+                                                <div className="text-xs opacity-70 mt-0.5">{s.distanceFromOrigin} km from origin</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Destination stage */}
+                                <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-5">
+                                    <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full bg-red-400 inline-block"></span>
+                                        Destination Stage
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {stages.map(s => (
+                                            <button key={s._id} onClick={() => handleToStageSelect(s)}
+                                                disabled={fromStage && s.stageOrder <= fromStage.stageOrder}
+                                                className={`w-full text-left px-4 py-3 rounded-xl transition ${
+                                                    toStage?._id === s._id
+                                                        ? 'bg-red-500/30 border border-red-400 text-white'
+                                                        : fromStage && s.stageOrder <= fromStage.stageOrder
+                                                            ? 'bg-white/5 text-gray-600 border border-transparent cursor-not-allowed'
+                                                            : 'bg-white/5 text-gray-300 hover:bg-white/10 border border-transparent'
+                                                }`}>
+                                                <div className="font-medium">{s.stageName}</div>
+                                                <div className="text-xs opacity-70 mt-0.5">{s.distanceFromOrigin} km from origin</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Fare preview */}
+                        {(fromStage || toStage) && (
+                            <div className="mt-6 bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-5">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-gray-300">
+                                        <span className="text-green-300 font-medium">{fromStage?.stageName || '"”'}</span>
+                                        {' ←’ '}
+                                        <span className="text-red-300 font-medium">{toStage?.stageName || '"”'}</span>
+                                    </div>
+                                    {fareLoading ? (
+                                        <div className="flex items-center gap-2 text-gray-400">
+                                            <Loader2 className="w-4 h-4 animate-spin" /> Calculating...
+                                        </div>
+                                    ) : fareInfo ? (
+                                        <div className="text-right">
+                                            <div className="text-3xl font-bold text-purple-300">₹{fareInfo.fare}</div>
+                                            <div className="text-xs text-gray-400">{fareInfo.distance} km Â· {fareInfo.busType} Â· ₹{fareInfo.pricePerKM}/km</div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        )}
+
+                        {stages.length > 0 && (
+                            <button onClick={proceedToSeats}
+                                className="mt-6 w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2">
+                                Continue to Seat Selection <ArrowRight className="w-5 h-5" />
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* Step 4: Select Seats */}
+                {bookingStep === 4 && (
                     <div className="max-w-4xl mx-auto">
                         <button
-                            onClick={() => setBookingStep(2)}
+                            onClick={() => setBookingStep(3)}
                             className="text-purple-400 hover:text-purple-300 mb-6"
                         >
-                            ← Back to Buses
+                            ← Back to Stage Selection
                         </button>
 
                         <div className="flex flex-col lg:flex-row gap-8">
@@ -485,20 +581,22 @@ const BookTicket = () => {
                                                     {selectedSeats.join(', ') || '-'}
                                                 </span>
                                             </div>
+                                            {fareInfo && (
+                                                <div className="text-xs text-gray-400 mb-2">
+                                                    {fromStage?.stageName} ←’ {toStage?.stageName} Â· {fareInfo.distance} km Â· {fareInfo.busType} ₹{fareInfo.pricePerKM}/km
+                                                </div>
+                                            )}
                                             <div className="flex justify-between text-xl font-bold text-white mt-4">
                                                 <span>Total Amount</span>
-                                                <span>₹{selectedSeats.length * 500}</span>
+                                                <span>₹{totalFare}</span>
                                             </div>
                                         </div>
                                     </div>
 
                                     <button
                                         onClick={() => {
-                                            if (selectedSeats.length === 0) {
-                                                toast.error('Please select at least one seat');
-                                                return;
-                                            }
-                                            setBookingStep(4);
+                                            if (selectedSeats.length === 0) { toast.error('Please select at least one seat'); return; }
+                                            setBookingStep(5);
                                         }}
                                         className={`w-full font-bold py-3 px-6 rounded-lg transition flex items-center justify-center space-x-2 ${selectedSeats.length > 0
                                             ? 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white'
@@ -514,14 +612,11 @@ const BookTicket = () => {
                     </div>
                 )}
 
-                {/* Step 4: Confirm Booking */}
-                {bookingStep === 4 && (
+                {/* Step 5: Confirm Booking */}
+                {bookingStep === 5 && (
                     <div>
-                        <button
-                            onClick={() => setBookingStep(3)}
-                            className="text-purple-400 hover:text-purple-300 mb-6"
-                        >
-                            ← Back to Seat Selection
+                        <button onClick={() => setBookingStep(4)} className="text-purple-400 hover:text-purple-300 mb-6">
+                            ← Back to Seat Selection
                         </button>
                         <h2 className="text-2xl font-bold text-white mb-6">Confirm Your Booking</h2>
 
@@ -594,7 +689,7 @@ const BookTicket = () => {
                                         className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-600 hover:to-blue-600 transition flex items-center justify-center space-x-2"
                                     >
                                         <CreditCard className="w-5 h-5" />
-                                        <span>Pay ₹{selectedSeats.length * 500} & Book</span>
+                                        <span>Pay ₹{totalFare} & Book</span>
                                     </button>
                                 </div>
                             </div>

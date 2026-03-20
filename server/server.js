@@ -12,9 +12,13 @@ import routeRoutes from './routes/routes.js';
 import busRoutes from './routes/buses.js';
 import tripRoutes from './routes/trips.js';
 import bookingRoutes from './routes/bookings.js';
+import stageRoutes from './routes/stages.js';
+import busTypeFareRoutes from './routes/busTypeFares.js';
+import fareRoutes from './routes/fare.js';
 
 // Import Socket.IO handler
 import { setupTrackingHandlers } from './socket/trackingHandler.js';
+import { setIO } from './socket/ioInstance.js';
 
 // Load environment variables
 dotenv.config();
@@ -36,6 +40,9 @@ const io = new Server(httpServer, {
         credentials: true
     }
 });
+
+// Register io instance for use in controllers
+setIO(io);
 
 // Middleware
 app.use(cors({
@@ -73,6 +80,9 @@ app.use('/api/routes', routeRoutes);
 app.use('/api/buses', busRoutes);
 app.use('/api/trips', tripRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/stages', stageRoutes);
+app.use('/api/bus-types', busTypeFareRoutes);
+app.use('/api/fare', fareRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

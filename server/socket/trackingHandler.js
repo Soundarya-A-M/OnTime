@@ -99,6 +99,31 @@ export const setupTrackingHandlers = (io) => {
             }
         });
 
+        // Driver reports a delay via socket
+        socket.on('driver:report-delay', async (data) => {
+            try {
+                const { tripId, busId, busNumber, routeName, delayMinutes, delayReason } = data;
+
+                // Update trip delay in DB
+                await Trip.findByIdAndUpdate(tripId, { delayMinutes, delayReason });
+
+                // Broadcast delay to all clients
+                io.emit('trip:delay', {
+                    tripId,
+                    busId,
+                    busNumber,
+                    routeName,
+                    delayMinutes,
+                    delayReason: delayReason || '',
+                    timestamp: new Date()
+                });
+
+                console.log(`🚨 Driver reported delay for trip ${tripId}: ${delayMinutes} min`);
+            } catch (error) {
+                console.error('Report delay (socket) error:', error);
+            }
+        });
+
         // Client subscribes to track a specific bus
         socket.on('track:bus', (data) => {
             const { busId } = data;
@@ -167,7 +192,7 @@ export const setupTrackingHandlers = (io) => {
                 }
             }
         } catch (error) {
-            console.error('ETA calculation error:', error);
+            console.warn('⚠️ ETA calculation skipped — DB unreachable:', error.message);
         }
     }, 30000); // Every 30 seconds
 };

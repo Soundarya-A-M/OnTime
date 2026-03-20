@@ -6,6 +6,7 @@ import socket from '../../config/socket';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
+import DelayBanner from '../../components/Notifications/DelayBanner';
 
 // Fix for default marker icons in Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -44,6 +45,11 @@ const TrackBus = () => {
     const [selectedBus, setSelectedBus] = useState(null);
     const [loading, setLoading] = useState(true);
     const [routeCoordinates, setRouteCoordinates] = useState([]);
+    const [delayInfo, setDelayInfo] = useState(null); // delay for currently selected bus
+    const selectedBusRef = useRef(null); // ref so socket handler always reads latest value
+
+    // Keep ref in sync with state
+    useEffect(() => { selectedBusRef.current = selectedBus; }, [selectedBus]);
 
     useEffect(() => {
         fetchActiveBuses();
@@ -51,6 +57,7 @@ const TrackBus = () => {
 
         return () => {
             socket.off('bus:location-updated');
+            socket.off('trip:delay');
         };
     }, []);
 
@@ -87,7 +94,7 @@ const TrackBus = () => {
                 )
             );
 
-            if (selectedBus?._id === data.busId) {
+            if (selectedBusRef.current?._id === data.busId) {
                 setSelectedBus(prev => ({
                     ...prev,
                     currentLocation: {
@@ -97,13 +104,22 @@ const TrackBus = () => {
                 }));
             }
         });
+
+        // Show delay banner if the currently selected bus is affected
+        socket.on('trip:delay', (data) => {
+            if (selectedBusRef.current?._id === data.busId ||
+                selectedBusRef.current?.currentTripId === data.tripId) {
+                setDelayInfo(data);
+            }
+        });
     };
 
     const handleBusClick = (bus) => {
         setSelectedBus(bus);
+        setDelayInfo(null); // reset delay banner on new bus selection
         if (bus.currentLocation?.coordinates) {
             setCenter([bus.currentLocation.coordinates.lat, bus.currentLocation.coordinates.lng]);
-            setZoom(16); // Zoom in closer when selecting a bus
+            setZoom(16);
         }
 
         // Get route coordinates if available
@@ -163,6 +179,8 @@ const TrackBus = () => {
 
                 {/* Map */}
                 <div className="flex-1 relative">
+                    {/* Delay Banner — shown above the map when selected bus is delayed */}
+                    <DelayBanner delayInfo={delayInfo} onDismiss={() => setDelayInfo(null)} />
                     <MapContainer
                         center={center}
                         zoom={13}

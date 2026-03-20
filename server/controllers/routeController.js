@@ -3,7 +3,10 @@ import Route from '../models/Route.js';
 // Create new route (Admin only)
 export const createRoute = async (req, res) => {
     try {
-        const { routeName, routeNumber, stops, distance, estimatedDuration } = req.body;
+        const {
+            routeName, routeNumber, stops, distance, estimatedDuration,
+            sourceCity, destinationCity, sourceCoordinates, destinationCoordinates, polyline
+        } = req.body;
 
         // Check if route number already exists
         const existingRoute = await Route.findOne({ routeNumber });
@@ -17,9 +20,14 @@ export const createRoute = async (req, res) => {
         const route = await Route.create({
             routeName,
             routeNumber,
-            stops,
-            distance,
-            estimatedDuration
+            stops: stops || [],
+            distance: distance || 0,
+            estimatedDuration: estimatedDuration || 0,
+            sourceCity: sourceCity || '',
+            destinationCity: destinationCity || '',
+            sourceCoordinates: sourceCoordinates || { lat: null, lng: null },
+            destinationCoordinates: destinationCoordinates || { lat: null, lng: null },
+            polyline: polyline || null
         });
 
         res.status(201).json({
@@ -89,11 +97,21 @@ export const getRouteById = async (req, res) => {
 // Update route (Admin only)
 export const updateRoute = async (req, res) => {
     try {
-        const { routeName, stops, distance, estimatedDuration, isActive } = req.body;
+        const {
+            routeName, stops, distance, estimatedDuration, isActive,
+            sourceCity, destinationCity, sourceCoordinates, destinationCoordinates, polyline
+        } = req.body;
+
+        const updateFields = {
+            routeName, stops, distance, estimatedDuration, isActive,
+            sourceCity, destinationCity, sourceCoordinates, destinationCoordinates, polyline
+        };
+        // Remove undefined keys to avoid overwriting with null
+        Object.keys(updateFields).forEach(k => updateFields[k] === undefined && delete updateFields[k]);
 
         const route = await Route.findByIdAndUpdate(
             req.params.id,
-            { routeName, stops, distance, estimatedDuration, isActive },
+            updateFields,
             { new: true, runValidators: true }
         );
 

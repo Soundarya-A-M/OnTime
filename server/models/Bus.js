@@ -57,6 +57,11 @@ const busSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Trip',
         default: null
+    },
+    busType: {
+        type: String,
+        enum: ['Ordinary', 'Express', 'AC'],
+        default: 'Ordinary'
     }
 }, {
     timestamps: true

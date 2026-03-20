@@ -1,10 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, LogOut, User } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import NotificationBell from '../Notifications/NotificationBell';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const Navbar = () => {
     const { isAuthenticated, user, logout } = useAuthStore();
     const navigate = useNavigate();
+    const { notifications, unreadCount, markAllRead, clearAll, removeNotification } = useNotifications();
 
     const handleLogout = () => {
         logout();
@@ -44,7 +47,7 @@ const Navbar = () => {
                             >
                                 Track Bus
                             </Link>
-                            <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-3">
                                 <div className="flex items-center space-x-2 text-gray-300">
                                     <User className="w-5 h-5" />
                                     <span>{user?.name}</span>
@@ -52,6 +55,13 @@ const Navbar = () => {
                                         {user?.role}
                                     </span>
                                 </div>
+                                <NotificationBell
+                                    notifications={notifications}
+                                    unreadCount={unreadCount}
+                                    markAllRead={markAllRead}
+                                    clearAll={clearAll}
+                                    removeNotification={removeNotification}
+                                />
                                 <button
                                     onClick={handleLogout}
                                     className="flex items-center space-x-1 px-4 py-2 text-white hover:text-red-300 transition"

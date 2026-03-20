@@ -4,7 +4,7 @@ import User from '../models/User.js';
 // Create new bus (Admin only)
 export const createBus = async (req, res) => {
     try {
-        const { busNumber, routeId, capacity } = req.body;
+        const { busNumber, routeId, capacity, busType, driverId } = req.body;
 
         // Check if bus number already exists
         const existingBus = await Bus.findOne({ busNumber });
@@ -15,10 +15,23 @@ export const createBus = async (req, res) => {
             });
         }
 
+        // Verify driver if provided
+        if (driverId) {
+            const driver = await User.findById(driverId);
+            if (!driver || driver.role !== 'driver') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid driver ID or user is not a driver.'
+                });
+            }
+        }
+
         const bus = await Bus.create({
             busNumber,
-            routeId,
-            capacity
+            routeId: routeId || null,
+            driverId: driverId || null,
+            capacity,
+            busType: busType || 'Ordinary'
         });
 
         res.status(201).json({
@@ -93,11 +106,14 @@ export const getBusById = async (req, res) => {
 // Update bus (Admin only)
 export const updateBus = async (req, res) => {
     try {
-        const { routeId, capacity, status } = req.body;
+        const { routeId, capacity, status, busType } = req.body;
+
+        const updateFields = { routeId, capacity, status };
+        if (busType) updateFields.busType = busType;
 
         const bus = await Bus.findByIdAndUpdate(
             req.params.id,
-            { routeId, capacity, status },
+            updateFields,
             { new: true, runValidators: true }
         ).populate('routeId').populate('driverId', 'name email');
 

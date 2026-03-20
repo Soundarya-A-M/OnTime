@@ -160,3 +160,32 @@ export const updateProfile = async (req, res) => {
         });
     }
 };
+
+// Get users by role (Admin only)
+export const getUsersByRole = async (req, res) => {
+    try {
+        const { role } = req.query;
+        
+        if (!role) {
+            return res.status(400).json({
+                success: false,
+                message: 'Role parameter is required.'
+            });
+        }
+
+        const users = await User.find({ role, isActive: true })
+            .select('name email phone role')
+            .sort({ name: 1 });
+
+        res.json({
+            success: true,
+            data: { users }
+        });
+    } catch (error) {
+        console.error('Get users by role error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch users.'
+        });
+    }
+};

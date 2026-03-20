@@ -45,7 +45,15 @@ const tripSchema = new mongoose.Schema({
             type: Number,
             default: 0
         }
-    }]
+    }],
+    delayMinutes: {
+        type: Number,
+        default: 0
+    },
+    delayReason: {
+        type: String,
+        default: ''
+    }
 }, {
     timestamps: true
 });
