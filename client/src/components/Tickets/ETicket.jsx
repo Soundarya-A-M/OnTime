@@ -1,32 +1,73 @@
-import { useRef } from 'react';
-import { X, Download, MapPin, Calendar, Clock, User, Bus, Hash, CheckCircle } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { X, Download, MapPin, Calendar, User, Bus, Hash, CheckCircle } from 'lucide-react';
 
-// Lightweight QR-like visual using a deterministic grid from ticketId
-const MiniQR = ({ value }) => {
-  const size = 10;
-  const cells = [];
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  }
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      const seed = (hash ^ (r * 31 + c * 97)) & 1;
-      cells.push(seed);
+// Real QR code generator using qrcode library loaded dynamically
+const RealQR = ({ value, size = 80 }) => {
+  const canvasRef = useRef(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const generate = async () => {
+      try {
+        // Dynamic import so it works even if qrcode is not in package.json yet
+        const QRCode = (await import('qrcode')).default;
+        if (canvasRef.current && !cancelled) {
+          await QRCode.toCanvas(canvasRef.current, value, {
+            width: size,
+            margin: 1,
+            color: { dark: '#1e293b', light: '#ffffff' },
+          });
+          if (!cancelled) setLoaded(true);
+        }
+      } catch (err) {
+        // Fallback to deterministic grid if qrcode not installed
+        if (!cancelled) setError(true);
+      }
+    };
+    generate();
+    return () => { cancelled = true; };
+  }, [value, size]);
+
+  // Fallback deterministic grid (used when qrcode pkg unavailable)
+  if (error) {
+    const gridSize = 10;
+    const cells = [];
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
     }
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        cells.push(((hash ^ (r * 31 + c * 97)) & 1) === 1);
+      }
+    }
+    // Finder corners
+    [[0,0],[0,1],[0,2],[1,0],[1,2],[2,0],[2,1],[2,2]].forEach(([r,c]) => {
+      cells[r * gridSize + c] = true;
+      cells[(gridSize-1-r) * gridSize + c] = true;
+    });
+    return (
+      <div style={{ display:'inline-grid', gridTemplateColumns:`repeat(${gridSize},1fr)`,
+        gap:'1px', padding:'6px', background:'white', borderRadius:'6px' }}>
+        {cells.map((filled, i) => (
+          <div key={i} style={{ width: size/gridSize - 1, height: size/gridSize - 1,
+            background: filled ? '#1e293b' : 'white', borderRadius:'1px' }} />
+        ))}
+      </div>
+    );
   }
-  // Always fill corners (finder pattern)
-  [0,1,2,0,1,2].forEach((r, i) => {
-    const c = i < 3 ? [0,1,2][i] : [size-3,size-2,size-1][i-3];
-    cells[r * size + c] = 1;
-    cells[(size-1-r) * size + c] = 1;
-  });
 
   return (
-    <div style={{ display: 'inline-grid', gridTemplateColumns: `repeat(${size}, 1fr)`, gap: '1px', padding: '6px', background: 'white', borderRadius: '6px' }}>
-      {cells.map((filled, i) => (
-        <div key={i} style={{ width: 8, height: 8, background: filled ? '#1e293b' : 'white', borderRadius: '1px' }} />
-      ))}
+    <div style={{ padding:'6px', background:'white', borderRadius:'6px', display:'inline-block' }}>
+      <canvas ref={canvasRef} style={{ display: loaded ? 'block' : 'none', borderRadius:'4px' }} />
+      {!loaded && !error && (
+        <div style={{ width: size, height: size, background:'#f1f5f9', borderRadius:'4px',
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:'10px', color:'#94a3b8' }}>
+          QR...
+        </div>
+      )}
     </div>
   );
 };
@@ -38,113 +79,77 @@ const ETicket = ({ booking, onClose }) => {
 
   const {
     ticketId = 'TKT000000',
-    busId,
-    routeId,
-    fromStop = 'Origin',
-    toStop = 'Destination',
-    travelDate,
-    seatNumbers = [],
-    amount = 0,
-    status = 'confirmed',
-    passengerDetails,
-    createdAt,
+    busId, routeId,
+    fromStop = 'Origin', toStop = 'Destination',
+    travelDate, seatNumbers = [],
+    amount = 0, status = 'confirmed',
+    passengerDetails, createdAt,
   } = booking;
 
-  const busNumber = busId?.busNumber || busId || 'N/A';
-  const routeName = routeId?.routeName || routeId || 'N/A';
+  const busNumber   = busId?.busNumber || busId || 'N/A';
+  const routeName   = routeId?.routeName || routeId || 'N/A';
   const passengerName = passengerDetails?.name || 'Passenger';
   const formattedDate = travelDate
-    ? new Date(travelDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+    ? new Date(travelDate).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' })
     : 'N/A';
   const bookedAt = createdAt
-    ? new Date(createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    ? new Date(createdAt).toLocaleString('en-IN', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
     : 'N/A';
 
   const handlePrint = () => {
     const el = ticketRef.current;
     if (!el) return;
     const win = window.open('', '_blank', 'width=700,height=900');
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>OnTime Ticket - ${ticketId}</title>
-        <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: flex-start; padding: 24px; min-height: 100vh; }
-          @media print { body { background: white; padding: 0; } .no-print { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        ${el.outerHTML}
-        <script>window.onload = () => { window.print(); }<\/script>
-      </body>
-      </html>
-    `);
+    win.document.write(`<!DOCTYPE html><html><head><title>OnTime Ticket - ${ticketId}</title>
+      <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',sans-serif;background:#f0f4f8;display:flex;justify-content:center;padding:24px}
+      @media print{body{background:white;padding:0}.no-print{display:none!important}}</style></head>
+      <body>${el.outerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`);
     win.document.close();
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1rem', overflowY: 'auto'
-    }}>
-      <div style={{ width: '100%', maxWidth: '480px' }}>
+    <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.7)',
+      backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center',
+      padding:'1rem', overflowY:'auto' }}>
+      <div style={{ width:'100%', maxWidth:'480px' }}>
         {/* Action bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <span style={{ color: 'white', fontWeight: 600, fontSize: '15px' }}>Your E-Ticket</span>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={handlePrint} style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '8px 14px', borderRadius: '8px',
-              background: 'rgba(139,92,246,0.9)', border: 'none',
-              color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: '13px'
-            }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
+          <span style={{ color:'white', fontWeight:600, fontSize:'15px' }}>Your E-Ticket</span>
+          <div style={{ display:'flex', gap:'8px' }}>
+            <button onClick={handlePrint} style={{ display:'flex', alignItems:'center', gap:'6px',
+              padding:'8px 14px', borderRadius:'8px', background:'rgba(139,92,246,0.9)',
+              border:'none', color:'white', cursor:'pointer', fontWeight:600, fontSize:'13px' }}>
               <Download size={14} /> Download / Print
             </button>
-            <button onClick={onClose} style={{
-              padding: '8px', borderRadius: '8px',
-              background: 'rgba(255,255,255,0.15)', border: 'none',
-              color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center'
-            }}>
+            <button onClick={onClose} style={{ padding:'8px', borderRadius:'8px',
+              background:'rgba(255,255,255,0.15)', border:'none', color:'white', cursor:'pointer',
+              display:'flex', alignItems:'center' }}>
               <X size={16} />
             </button>
           </div>
         </div>
 
         {/* Ticket card */}
-        <div ref={ticketRef} style={{
-          background: 'white', borderRadius: '20px',
-          boxShadow: '0 25px 60px rgba(0,0,0,0.4)', overflow: 'hidden',
-          fontFamily: "'Segoe UI', sans-serif"
-        }}>
+        <div ref={ticketRef} style={{ background:'white', borderRadius:'20px',
+          boxShadow:'0 25px 60px rgba(0,0,0,0.4)', overflow:'hidden', fontFamily:"'Segoe UI',sans-serif" }}>
           {/* Header */}
-          <div style={{
-            background: 'linear-gradient(135deg, #1e1b4b 0%, #3730a3 50%, #6d28d9 100%)',
-            padding: '20px 24px', position: 'relative', overflow: 'hidden'
-          }}>
-            <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
-            <div style={{ position: 'absolute', top: 10, right: 30, width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ background:'linear-gradient(135deg,#1e1b4b 0%,#3730a3 50%,#6d28d9 100%)',
+            padding:'20px 24px', position:'relative', overflow:'hidden' }}>
+            <div style={{ position:'absolute', top:-20, right:-20, width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.08)' }} />
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
               <div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>
+                <div style={{ color:'rgba(255,255,255,0.7)', fontSize:'11px', letterSpacing:'2px', textTransform:'uppercase', marginBottom:'4px' }}>
                   OnTime Bus Services
                 </div>
-                <div style={{ color: 'white', fontSize: '22px', fontWeight: 700 }}>E-Ticket</div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', marginTop: '2px' }}>
-                  Booked: {bookedAt}
-                </div>
+                <div style={{ color:'white', fontSize:'22px', fontWeight:700 }}>E-Ticket</div>
+                <div style={{ color:'rgba(255,255,255,0.6)', fontSize:'12px', marginTop:'2px' }}>Booked: {bookedAt}</div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{
-                  background: status === 'confirmed' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)',
-                  border: `1px solid ${status === 'confirmed' ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
+              <div style={{ textAlign:'right' }}>
+                <div style={{ background: status === 'confirmed' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)',
+                  border:`1px solid ${status === 'confirmed' ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
                   color: status === 'confirmed' ? '#6ee7b7' : '#fca5a5',
-                  padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
-                  textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px'
-                }}>
+                  padding:'4px 10px', borderRadius:'20px', fontSize:'11px', fontWeight:700,
+                  textTransform:'uppercase', letterSpacing:'1px', display:'flex', alignItems:'center', gap:'4px' }}>
                   <CheckCircle size={10} /> {status}
                 </div>
               </div>
@@ -152,67 +157,64 @@ const ETicket = ({ booking, onClose }) => {
           </div>
 
           {/* Ticket ID strip */}
-          <div style={{ background: '#f8fafc', borderBottom: '2px dashed #e2e8f0', padding: '10px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background:'#f8fafc', borderBottom:'2px dashed #e2e8f0', padding:'10px 24px',
+            display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
               <Hash size={14} color="#6366f1" />
-              <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 700, color: '#1e293b', letterSpacing: '1px' }}>
+              <span style={{ fontFamily:'monospace', fontSize:'14px', fontWeight:700, color:'#1e293b', letterSpacing:'1px' }}>
                 {ticketId}
               </span>
             </div>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ticket ID</span>
+            <span style={{ fontSize:'11px', color:'#94a3b8' }}>Ticket ID</span>
           </div>
 
-          {/* Journey info */}
-          <div style={{ padding: '20px 24px' }}>
-            {/* Route */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10b981', border: '2px solid white', boxShadow: '0 0 0 2px #10b981' }} />
-                  <div style={{ width: 1, height: 28, background: 'linear-gradient(to bottom, #10b981, #6366f1)', borderRadius: '1px' }} />
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#6366f1', border: '2px solid white', boxShadow: '0 0 0 2px #6366f1' }} />
+          {/* Journey */}
+          <div style={{ padding:'20px 24px' }}>
+            <div style={{ marginBottom:'20px' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'8px' }}>
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'4px' }}>
+                  <div style={{ width:10, height:10, borderRadius:'50%', background:'#10b981', border:'2px solid white', boxShadow:'0 0 0 2px #10b981' }} />
+                  <div style={{ width:1, height:28, background:'linear-gradient(to bottom,#10b981,#6366f1)', borderRadius:'1px' }} />
+                  <div style={{ width:10, height:10, borderRadius:'50%', background:'#6366f1', border:'2px solid white', boxShadow:'0 0 0 2px #6366f1' }} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ marginBottom: '14px' }}>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>From</div>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{fromStop}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ marginBottom:'14px' }}>
+                    <div style={{ fontSize:'11px', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'1px' }}>From</div>
+                    <div style={{ fontSize:'16px', fontWeight:700, color:'#0f172a' }}>{fromStop}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>To</div>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>{toStop}</div>
+                    <div style={{ fontSize:'11px', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'1px' }}>To</div>
+                    <div style={{ fontSize:'16px', fontWeight:700, color:'#0f172a' }}>{toStop}</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Grid of details */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+            {/* Details grid */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'20px' }}>
               {[
-                { icon: <Bus size={13} />, label: 'Bus', value: busNumber },
-                { icon: <MapPin size={13} />, label: 'Route', value: routeName.length > 20 ? routeName.substring(0, 20) + '…' : routeName },
-                { icon: <Calendar size={13} />, label: 'Travel Date', value: formattedDate },
-                { icon: <User size={13} />, label: 'Passenger', value: passengerName },
+                { icon: <Bus size={13}/>, label:'Bus', value:busNumber },
+                { icon: <MapPin size={13}/>, label:'Route', value: routeName.length > 20 ? routeName.substring(0,20)+'…' : routeName },
+                { icon: <Calendar size={13}/>, label:'Travel Date', value:formattedDate },
+                { icon: <User size={13}/>, label:'Passenger', value:passengerName },
               ].map(({ icon, label, value }) => (
-                <div key={label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#94a3b8', fontSize: '11px', marginBottom: '3px' }}>
+                <div key={label} style={{ background:'#f8fafc', borderRadius:'10px', padding:'10px 12px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'5px', color:'#94a3b8', fontSize:'11px', marginBottom:'3px' }}>
                     {icon} {label}
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{value}</div>
+                  <div style={{ fontSize:'13px', fontWeight:600, color:'#1e293b' }}>{value}</div>
                 </div>
               ))}
             </div>
 
             {/* Seats */}
-            <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Seat(s)</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ background:'#f8fafc', borderRadius:'10px', padding:'12px', marginBottom:'16px' }}>
+              <div style={{ fontSize:'11px', color:'#94a3b8', textTransform:'uppercase', letterSpacing:'1px', marginBottom:'8px' }}>Seat(s)</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                 {(seatNumbers.length > 0 ? seatNumbers : ['N/A']).map(seat => (
-                  <div key={seat} style={{
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                    color: 'white', borderRadius: '6px',
-                    padding: '4px 10px', fontSize: '13px', fontWeight: 700,
-                    boxShadow: '0 2px 4px rgba(99,102,241,0.3)'
-                  }}>
+                  <div key={seat} style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'white',
+                    borderRadius:'6px', padding:'4px 10px', fontSize:'13px', fontWeight:700,
+                    boxShadow:'0 2px 4px rgba(99,102,241,0.3)' }}>
                     {seat}
                   </div>
                 ))}
@@ -220,33 +222,37 @@ const ETicket = ({ booking, onClose }) => {
             </div>
 
             {/* Amount */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)', borderRadius: '10px' }}>
-              <span style={{ fontSize: '13px', color: '#4c1d95', fontWeight: 600 }}>Total Paid</span>
-              <span style={{ fontSize: '22px', fontWeight: 800, color: '#4c1d95' }}>₹{amount}</span>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px',
+              background:'linear-gradient(135deg,#ede9fe,#ddd6fe)', borderRadius:'10px' }}>
+              <span style={{ fontSize:'13px', color:'#4c1d95', fontWeight:600 }}>Total Paid</span>
+              <span style={{ fontSize:'22px', fontWeight:800, color:'#4c1d95' }}>₹{amount}</span>
             </div>
           </div>
 
-          {/* Dotted divider with notches */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <div style={{ position: 'absolute', left: -14, width: 28, height: 28, borderRadius: '50%', background: '#f0f4f8', border: '2px solid #e2e8f0' }} />
-            <div style={{ flex: 1, borderTop: '2px dashed #e2e8f0', margin: '0 16px' }} />
-            <div style={{ position: 'absolute', right: -14, width: 28, height: 28, borderRadius: '50%', background: '#f0f4f8', border: '2px solid #e2e8f0' }} />
+          {/* Tear line */}
+          <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
+            <div style={{ position:'absolute', left:-14, width:28, height:28, borderRadius:'50%', background:'#f0f4f8', border:'2px solid #e2e8f0' }} />
+            <div style={{ flex:1, borderTop:'2px dashed #e2e8f0', margin:'0 16px' }} />
+            <div style={{ position:'absolute', right:-14, width:28, height:28, borderRadius:'50%', background:'#f0f4f8', border:'2px solid #e2e8f0' }} />
           </div>
 
-          {/* QR code section */}
-          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa' }}>
+          {/* QR section — NOW USES REAL QR CODE */}
+          <div style={{ padding:'20px 24px', display:'flex', justifyContent:'space-between', alignItems:'center', background:'#fafafa' }}>
             <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>Scan to verify</div>
-              <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#475569', letterSpacing: '1px' }}>{ticketId}</div>
-              <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px' }}>Present this ticket to the conductor</div>
+              <div style={{ fontSize:'11px', color:'#94a3b8', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'1px' }}>
+                Scan to verify
+              </div>
+              <div style={{ fontFamily:'monospace', fontSize:'12px', color:'#475569', letterSpacing:'1px' }}>{ticketId}</div>
+              <div style={{ fontSize:'11px', color:'#cbd5e1', marginTop:'4px' }}>Present this ticket to the conductor</div>
             </div>
-            <MiniQR value={ticketId} />
+            {/* Real scannable QR code */}
+            <RealQR value={`ONTIME:${ticketId}:${busNumber}:${fromStop}:${toStop}`} size={80} />
           </div>
 
           {/* Footer */}
-          <div style={{ background: '#1e293b', padding: '12px 24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '11px', color: '#475569' }}>
-              This is a computer-generated ticket. Valid ID required during travel. • OnTime Bus Tracking System
+          <div style={{ background:'#1e293b', padding:'12px 24px', textAlign:'center' }}>
+            <div style={{ fontSize:'11px', color:'#475569' }}>
+              Computer-generated ticket. Valid ID required during travel. • OnTime Bus Tracking System
             </div>
           </div>
         </div>
