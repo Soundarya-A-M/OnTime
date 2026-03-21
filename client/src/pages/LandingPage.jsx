@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Search, Calendar, Loader2 } from 'lucide-react';
+import { MapPin, Clock, Search, Calendar, Loader2, Bus, Zap, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -16,7 +16,6 @@ const LandingPage = () => {
     const [allRoutes, setAllRoutes] = useState([]);
     const [searching, setSearching] = useState(false);
 
-    // Pre-fetch all routes on mount for fast search
     useEffect(() => {
         api.get('/routes').then(res => {
             if (res.success) setAllRoutes(res.data.routes);
@@ -39,28 +38,22 @@ const LandingPage = () => {
             navigate('/login');
             return;
         }
-        if (!fromPlace.trim()) {
-            toast.error('Please enter starting location');
-            return;
-        }
+        if (!fromPlace.trim()) { toast.error('Please enter starting location'); return; }
 
         setSearching(true);
         try {
             const from = fromPlace.trim().toLowerCase();
             const to = toPlace.trim().toLowerCase();
 
-            // Search in real routes from API
             const results = allRoutes.filter(route => {
                 const sourceName = (route.sourceCity || route.routeName || '').toLowerCase();
                 const destName = (route.destinationCity || route.routeName || '').toLowerCase();
                 const routeName = (route.routeName || '').toLowerCase();
-
                 const matchFrom = sourceName.includes(from) || routeName.includes(from);
                 const matchTo = !to || destName.includes(to) || routeName.includes(to);
                 return matchFrom && matchTo;
             });
 
-            // Also fetch active buses for matched routes to check live status
             const enriched = await Promise.all(results.map(async (route) => {
                 try {
                     const busRes = await api.get(`/buses?routeId=${route._id}&status=active`);
@@ -88,13 +81,31 @@ const LandingPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-            {/* Hero */}
+            {/* Hero — FIX #4: CSS gradient instead of broken image references */}
             <section className="relative pt-16">
-                <div className="relative w-full h-64 md:h-96 overflow-hidden">
-                    <img src="/bus-hero.jpeg" alt="Bus" className="w-full h-full object-cover opacity-90" />
+                <div className="relative w-full h-64 md:h-96 overflow-hidden bg-gradient-to-br from-slate-800 via-blue-900 to-purple-900">
+                    {/* Decorative background elements */}
+                    <div className="absolute inset-0 overflow-hidden">
+                        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
+                        <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl" />
+                        {/* Animated road lines */}
+                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/40 to-transparent" />
+                        <div className="absolute bottom-8 left-0 right-0 flex gap-8 justify-center opacity-20">
+                            {[...Array(8)].map((_, i) => (
+                                <div key={i} className="w-12 h-1.5 bg-white rounded-full" />
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Hero bus icon */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                        <Bus className="w-64 h-64 text-white" />
+                    </div>
+
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
                     <div className="absolute bottom-8 left-0 right-0 text-center">
                         <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-lg">Where Is My Bus?</h1>
+                        <p className="text-blue-300 mt-2 text-lg font-medium">Live GPS tracking across Karnataka</p>
                     </div>
                 </div>
             </section>
@@ -107,26 +118,16 @@ const LandingPage = () => {
                         <p className="text-gray-300 text-center mb-8">Search live routes powered by real-time data</p>
 
                         <div className="flex flex-col md:flex-row gap-4 items-center justify-center mb-6">
-                            <input
-                                type="text"
-                                placeholder="From (city or stop)"
-                                value={fromPlace}
+                            <input type="text" placeholder="From (city or stop)" value={fromPlace}
                                 onChange={(e) => setFromPlace(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                             <span className="text-white text-2xl hidden md:block">→</span>
-                            <input
-                                type="text"
-                                placeholder="To (optional)"
-                                value={toPlace}
+                            <input type="text" placeholder="To (optional)" value={toPlace}
                                 onChange={(e) => setToPlace(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            <button
-                                onClick={handleSearch}
-                                disabled={searching}
+                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <button onClick={handleSearch} disabled={searching}
                                 className="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-cyan-600 transition flex items-center justify-center gap-2 disabled:opacity-70">
                                 {searching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                                 {searching ? 'Searching...' : 'Search'}
@@ -200,8 +201,8 @@ const LandingPage = () => {
                     <div className="grid md:grid-cols-3 gap-8">
                         {[
                             { icon: MapPin, title: 'Live GPS Tracking', description: 'Track buses in real-time with accurate GPS updates every 3–5 seconds.', gradient: 'from-blue-500 to-cyan-500' },
-                            { icon: Clock, title: 'Accurate ETA', description: 'Dynamic arrival time calculation based on live speed and GPS data.', gradient: 'from-purple-500 to-pink-500' },
-                            { icon: Search, title: 'Easy Route Search', description: 'Find your bus routes quickly and book tickets with e-ticket generation.', gradient: 'from-green-500 to-emerald-500' },
+                            { icon: Zap, title: 'Accurate ETA', description: 'Dynamic arrival time calculation based on live speed and GPS data.', gradient: 'from-purple-500 to-pink-500' },
+                            { icon: Shield, title: 'Secure Booking', description: 'Book tickets with e-ticket generation and QR code verification.', gradient: 'from-green-500 to-emerald-500' },
                         ].map((feature, idx) => (
                             <div key={idx} className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition transform hover:scale-105">
                                 <div className={`w-14 h-14 bg-gradient-to-br ${feature.gradient} rounded-xl flex items-center justify-center mb-6`}>
@@ -215,10 +216,21 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Promo */}
+            {/* Stats band — replaces the broken promo image */}
             <section className="py-12 px-4">
                 <div className="max-w-4xl mx-auto">
-                    <img src="/bus-offer.jpeg" alt="Bus Ticket Booking Offer" className="w-full rounded-2xl shadow-2xl" />
+                    <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-white/10 rounded-2xl p-8 grid grid-cols-3 gap-4 text-center">
+                        {[
+                            { value: '50+', label: 'Routes Covered' },
+                            { value: '200+', label: 'Buses Tracked' },
+                            { value: '99.9%', label: 'Uptime' },
+                        ].map(({ value, label }) => (
+                            <div key={label}>
+                                <div className="text-4xl font-black text-white mb-1">{value}</div>
+                                <div className="text-blue-300 text-sm font-medium">{label}</div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </section>
 

@@ -1,187 +1,348 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { MapPin, Ticket, Clock, TrendingUp, Eye, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Play, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import socket from '../../config/socket';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
-import ETicket from '../../components/Tickets/ETicket';
 
-const PAGE_SIZE = 5;
+const DriverDashboard = () => {
+    const { user } = useAuthStore();
+    const [currentTrip, setCurrentTrip] = useState(null);
+    const [myBus, setMyBus] = useState(null);
+    const [isSharing, setIsSharing] = useState(false);
+    const [watchId, setWatchId] = useState(null);
+    const [delayMinutes, setDelayMinutes] = useState('');
+    const [delayReason, setDelayReason] = useState('');
+    const [reportingDelay, setReportingDelay] = useState(false);
+    const [busLoading, setBusLoading] = useState(true);
 
-const UserDashboard = () => {
-  const { user } = useAuthStore();
-  const [allBookings, setAllBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [viewingTicket, setViewingTicket] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'confirmed' | 'cancelled' | 'completed'
-  const [page, setPage] = useState(1);
+    // FIX: keep a ref to myBus so startLocationSharing closure always has current value
+    const myBusRef = useRef(null);
+    useEffect(() => { myBusRef.current = myBus; }, [myBus]);
 
-  useEffect(() => { fetchBookings(); }, []);
+    useEffect(() => {
+        fetchMyBus();
+    }, []);
 
-  const fetchBookings = async () => {
-    try {
-      const response = await api.get('/bookings/my');
-      if (response.success) setAllBookings(response.data.bookings);
-    } catch {
-      toast.error('Failed to fetch bookings');
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchMyBus = async () => {
+        try {
+            const response = await api.get('/buses');
+            if (response.success) {
+                const assignedBus = response.data.buses.find(b => b.driverId?._id === user.id);
+                setMyBus(assignedBus || null);
+                myBusRef.current = assignedBus || null;
+                // FIX: only fetch current trip AFTER we know the bus, passing it directly
+                await fetchCurrentTrip(assignedBus);
+            }
+        } catch (error) {
+            toast.error('Failed to fetch bus info');
+        } finally {
+            setBusLoading(false);
+        }
+    };
 
-  // Filtered + paginated
-  const filtered = statusFilter === 'all' ? allBookings : allBookings.filter(b => b.status === statusFilter);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    // FIX: accept bus as param so we don't depend on state timing
+    const fetchCurrentTrip = async (bus) => {
+        try {
+            const response = await api.get('/trips/my-current');
+            if (response.success && response.data.trip) {
+                setCurrentTrip(response.data.trip);
+                if (bus) startLocationSharing(bus);
+            }
+        } catch (error) {
+            console.error('Failed to fetch current trip');
+        }
+    };
 
-  const handleFilterChange = (f) => { setStatusFilter(f); setPage(1); };
+    const startTrip = async () => {
+        if (!myBus) {
+            toast.error('No bus assigned to you');
+            return;
+        }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
-      {viewingTicket && <ETicket booking={viewingTicket} onClose={() => setViewingTicket(null)} />}
+        try {
+            const response = await api.post('/trips/start', {
+                routeId: myBus.routeId?._id
+            });
 
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Welcome back, {user?.name}! 👋</h1>
-          <p className="text-gray-300">Track buses, book tickets, and manage your journeys</p>
-        </div>
+            if (response.success) {
+                setCurrentTrip(response.data.trip);
+                toast.success('Trip started!');
+                startLocationSharing(myBus);
 
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          {[
-            { to:'/track',       icon:MapPin,  title:'Track Bus',     sub:'View live bus locations in real-time',     grad:'from-purple-500 to-pink-500' },
-            { to:'/book-ticket', icon:Ticket,  title:'Book Ticket',   sub:'Reserve your seat for upcoming trips',      grad:'from-blue-500 to-cyan-500' },
-            { to:'/track',       icon:Clock,   title:'View Schedule', sub:'Check bus timings and live ETAs',           grad:'from-green-500 to-emerald-500' },
-          ].map(c => (
-            <Link key={c.to+c.title} to={c.to}
-              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition group">
-              <div className={`w-14 h-14 bg-gradient-to-br ${c.grad} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition`}>
-                <c.icon className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">{c.title}</h3>
-              <p className="text-gray-300">{c.sub}</p>
-            </Link>
-          ))}
-        </div>
+                // FIX: guard socket connection before emitting
+                if (!socket.connected) socket.connect();
+                socket.emit('driver:trip-start', {
+                    tripId: response.data.trip._id,
+                    busId: myBus._id
+                });
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to start trip');
+        }
+    };
 
-        {/* Booking History */}
-        <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-bold text-white">Booking History</h2>
-              <TrendingUp className="w-6 h-6 text-purple-400" />
-              {!loading && (
-                <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-xs rounded-full">
-                  {filtered.length} booking{filtered.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
+    const endTrip = async () => {
+        if (!currentTrip) return;
 
-            {/* Status Filter */}
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <div className="flex gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
-                {['all', 'confirmed', 'completed', 'cancelled'].map(f => (
-                  <button key={f} onClick={() => handleFilterChange(f)}
-                    className={`px-3 py-1 rounded text-xs font-medium capitalize transition ${statusFilter === f ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}>
-                    {f}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        try {
+            const response = await api.put(`/trips/${currentTrip._id}/end`);
 
-          {loading ? (
-            <div className="text-gray-300">Loading bookings...</div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-8">
-              <Ticket className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-              <p className="text-gray-400">
-                {statusFilter === 'all' ? 'No bookings yet.' : `No ${statusFilter} bookings.`}
-              </p>
-              {statusFilter === 'all' && (
-                <Link to="/book-ticket"
-                  className="inline-block mt-4 px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition">
-                  Book Your First Trip
-                </Link>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="space-y-3">
-                {paginated.map(booking => (
-                  <div key={booking._id}
-                    className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <p className="text-white font-semibold">{booking.busId?.busNumber || 'N/A'}</p>
-                          <span className="text-gray-400 text-xs font-mono">{booking.ticketId}</span>
-                        </div>
-                        {(booking.fromStop || booking.toStop) && (
-                          <p className="text-gray-300 text-sm mb-1">
-                            {booking.fromStop} → {booking.toStop}
-                          </p>
-                        )}
-                        <div className="flex items-center flex-wrap gap-4 text-xs text-gray-400">
-                          {booking.seatNumbers?.length > 0 && (
-                            <span>Seats: {booking.seatNumbers.join(', ')}</span>
-                          )}
-                          {booking.amount > 0 && <span className="text-purple-300 font-medium">₹{booking.amount}</span>}
-                          <span>{new Date(booking.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</span>
-                          {booking.routeId?.routeName && (
-                            <span className="text-gray-500">{booking.routeId.routeName}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          booking.status === 'confirmed' ? 'bg-green-500/20 text-green-300' :
-                          booking.status === 'completed' ? 'bg-blue-500/20 text-blue-300' :
-                          'bg-red-500/20 text-red-300'}`}>
-                          {booking.status}
-                        </span>
-                        <button onClick={() => setViewingTicket(booking)}
-                          className="flex items-center gap-1 px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-full text-xs font-medium transition"
-                          title="View e-ticket">
-                          <Eye className="w-3 h-3" /> Ticket
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            if (response.success) {
+                toast.success('Trip ended!');
+                const tripId = currentTrip._id;
+                const busId = myBus?._id;
+                setCurrentTrip(null);
+                stopLocationSharing();
+                setDelayMinutes('');
+                setDelayReason('');
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
-                  <p className="text-gray-400 text-sm">
-                    Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                      className="p-2 bg-white/5 border border-white/10 rounded-lg text-gray-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition">
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
-                      <button key={n} onClick={() => setPage(n)}
-                        className={`w-8 h-8 rounded-lg text-sm font-medium transition ${page === n ? 'bg-purple-500 text-white' : 'bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10'}`}>
-                        {n}
-                      </button>
-                    ))}
-                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                      className="p-2 bg-white/5 border border-white/10 rounded-lg text-gray-300 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
+                if (!socket.connected) socket.connect();
+                socket.emit('driver:trip-end', { tripId, busId });
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to end trip');
+        }
+    };
+
+    const handleReportDelay = async (e) => {
+        e.preventDefault();
+        if (!currentTrip) return;
+
+        const mins = parseInt(delayMinutes, 10);
+        if (!mins || mins <= 0) {
+            toast.error('Enter a valid delay in minutes');
+            return;
+        }
+
+        setReportingDelay(true);
+        try {
+            const response = await api.post(`/trips/${currentTrip._id}/delay`, {
+                delayMinutes: mins,
+                delayReason: delayReason.trim()
+            });
+
+            if (response.success) {
+                toast.success(`⚠️ Delay of ${mins} min reported to all passengers!`);
+                setDelayMinutes('');
+                setDelayReason('');
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to report delay');
+        } finally {
+            setReportingDelay(false);
+        }
+    };
+
+    // FIX: accept bus as param so this never reads stale null state
+    const startLocationSharing = (bus) => {
+        if (!bus) {
+            toast.error('No bus assigned — cannot share location');
+            return;
+        }
+        if (!navigator.geolocation) {
+            toast.error('Geolocation not supported');
+            return;
+        }
+
+        const id = navigator.geolocation.watchPosition(
+            (position) => {
+                const { latitude, longitude, speed } = position.coords;
+
+                if (!socket.connected) socket.connect();
+                socket.emit('driver:location-update', {
+                    busId: bus._id,
+                    lat: latitude,
+                    lng: longitude,
+                    speed: speed || 0
+                });
+
+                setIsSharing(true);
+            },
+            (error) => {
+                console.error('Geolocation error:', error);
+                toast.error('Failed to get location');
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+
+        setWatchId(id);
+    };
+
+    const stopLocationSharing = () => {
+        if (watchId) {
+            navigator.geolocation.clearWatch(watchId);
+            setWatchId(null);
+            setIsSharing(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
+            <div className="max-w-4xl mx-auto">
+                <div className="mb-8">
+                    <h1 className="text-4xl font-bold text-white mb-2">Driver Dashboard</h1>
+                    <p className="text-gray-300">Manage your trips and share live location</p>
                 </div>
-              )}
-            </>
-          )}
+
+                {/* Bus Info Card */}
+                <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
+                    <h2 className="text-2xl font-bold text-white mb-4">My Bus</h2>
+                    {busLoading ? (
+                        <div className="flex items-center gap-3 text-gray-400">
+                            <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                            Loading bus info...
+                        </div>
+                    ) : myBus ? (
+                        <div className="space-y-3">
+                            <div className="flex justify-between">
+                                <span className="text-gray-300">Bus Number:</span>
+                                <span className="text-white font-semibold">{myBus.busNumber}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-300">Route:</span>
+                                <span className="text-white font-semibold">{myBus.routeId?.routeName || 'Not assigned'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-300">Type:</span>
+                                <span className="text-white font-semibold">{myBus.busType || 'Ordinary'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-300">Capacity:</span>
+                                <span className="text-white font-semibold">{myBus.capacity} seats</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-300">Status:</span>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                    myBus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
+                                }`}>
+                                    {myBus.status}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-300 text-sm">
+                            ⚠️ No bus is assigned to your account. Contact an admin to get assigned to a bus before starting a trip.
+                        </div>
+                    )}
+                </div>
+
+                {/* Trip Control */}
+                <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
+                    <h2 className="text-2xl font-bold text-white mb-4">Trip Control</h2>
+
+                    {currentTrip ? (
+                        <div className="space-y-4">
+                            <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4">
+                                <div className="flex items-center space-x-2 mb-2">
+                                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                                    <span className="text-green-300 font-semibold">Trip Active</span>
+                                </div>
+                                <p className="text-gray-300 text-sm">Started: {new Date(currentTrip.startTime).toLocaleString()}</p>
+                            </div>
+
+                            {isSharing && (
+                                <div className="flex items-center space-x-2 text-blue-300">
+                                    <MapPin className="w-5 h-5 animate-pulse" />
+                                    <span>Sharing live location...</span>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={endTrip}
+                                className="w-full py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-medium hover:from-red-600 hover:to-pink-600 transition flex items-center justify-center space-x-2"
+                            >
+                                <Square className="w-5 h-5" />
+                                <span>End Trip</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <p className="text-gray-400">No active trip</p>
+                            <button
+                                onClick={startTrip}
+                                disabled={!myBus || busLoading}
+                                className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Play className="w-5 h-5" />
+                                <span>{busLoading ? 'Loading...' : 'Start Trip'}</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Report Delay — only visible during an active trip */}
+                {currentTrip && (
+                    <div className="bg-amber-950/40 backdrop-blur-lg border border-amber-500/30 rounded-2xl p-6 mb-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white">Report Delay</h2>
+                        </div>
+                        <p className="text-gray-400 text-sm mb-4">Alert all passengers instantly about a service delay.</p>
+
+                        <form onSubmit={handleReportDelay} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Delay (minutes)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="120"
+                                    value={delayMinutes}
+                                    onChange={(e) => setDelayMinutes(e.target.value)}
+                                    placeholder="e.g. 15"
+                                    className="w-full px-4 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/60 transition"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Reason <span className="text-gray-500">(optional)</span></label>
+                                <input
+                                    type="text"
+                                    value={delayReason}
+                                    onChange={(e) => setDelayReason(e.target.value)}
+                                    placeholder="e.g. Heavy traffic, Road block..."
+                                    className="w-full px-4 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/60 transition"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={reportingDelay}
+                                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-orange-600 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Send className="w-4 h-4" />
+                                <span>{reportingDelay ? 'Sending...' : 'Send Delay Alert'}</span>
+                            </button>
+                        </form>
+                    </div>
+                )}
+
+                {/* Instructions */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6">
+                    <h3 className="text-lg font-semibold text-white mb-3">Instructions</h3>
+                    <ul className="space-y-2 text-gray-300 text-sm">
+                        <li className="flex items-start space-x-2">
+                            <Clock className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>Start your trip when you begin your route</span>
+                        </li>
+                        <li className="flex items-start space-x-2">
+                            <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>Your location will be shared automatically with passengers</span>
+                        </li>
+                        <li className="flex items-start space-x-2">
+                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
+                            <span>Use <strong className="text-amber-300">Report Delay</strong> to instantly alert passengers of any delays</span>
+                        </li>
+                        <li className="flex items-start space-x-2">
+                            <Square className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>End the trip when you complete your route</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
-export default UserDashboard;
+export default DriverDashboard;

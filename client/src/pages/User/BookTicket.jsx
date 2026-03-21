@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bus, MapPin, Calendar, Users, CreditCard, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
+import { Bus, MapPin, Calendar, Users, CreditCard, ArrowRight, Loader2, AlertTriangle } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 import ETicket from '../../components/Tickets/ETicket';
@@ -27,7 +27,8 @@ const BookTicket = () => {
     const [toStage, setToStage] = useState(null);
     const [fareInfo, setFareInfo] = useState(null);
     const [fareLoading, setFareLoading] = useState(false);
-    const [bookingResult, setBookingResult] = useState(null); // completed booking for e-ticket
+    const [fareError, setFareError] = useState(null);
+    const [bookingResult, setBookingResult] = useState(null);
 
     useEffect(() => { fetchRoutes(); }, []);
 
@@ -41,6 +42,7 @@ const BookTicket = () => {
 
     const fetchBusesForRoute = async (routeId) => {
         try {
+            // FIX: routeId filter now works in busController
             const response = await api.get(`/buses?routeId=${routeId}&status=active`);
             if (response.success) setBuses(response.data.buses);
         } catch { toast.error('Failed to fetch buses'); }
@@ -57,14 +59,13 @@ const BookTicket = () => {
         } catch { toast.error('Failed to fetch stages'); }
     };
 
-    // Fetch already-booked seats for the selected bus trip
     const fetchBookedSeats = async (busId) => {
         try {
-            // Find active trip for this bus
             const tripsRes = await api.get('/trips/active');
             if (tripsRes.success) {
                 const trip = tripsRes.data.trips.find(t => t.busId?._id === busId || t.busId === busId);
                 if (trip) {
+                    // FIX: correct path — /bookings/seats/:tripId (not /seats/:tripId)
                     const seatsRes = await api.get(`/bookings/seats/${trip._id}`);
                     if (seatsRes.success) {
                         setBookedSeats(seatsRes.data.bookedSeats || []);
@@ -73,7 +74,7 @@ const BookTicket = () => {
                 }
             }
         } catch {
-            // No active trip — no booked seats to show, that's OK
+            // No active trip or auth error — no booked seats to show
         }
         setBookedSeats([]);
         return null;
@@ -82,25 +83,28 @@ const BookTicket = () => {
     const fetchFare = async (fromId, toId, busId) => {
         if (!fromId || !toId || !busId) return;
         setFareLoading(true);
+        setFareError(null);
+        setFareInfo(null);
         try {
             const res = await api.get(`/fare/calculate?fromStageId=${fromId}&toStageId=${toId}&busId=${busId}`);
             if (res.success) setFareInfo(res.data);
         } catch (e) {
-            toast.error(e.message || 'Failed to calculate fare');
-            setFareInfo(null);
+            const msg = e.message || 'Failed to calculate fare';
+            setFareError(msg);
+            toast.error(msg);
         } finally { setFareLoading(false); }
     };
 
     const handleRouteSelect = (route) => {
         setSelectedRoute(route); setSelectedBus(null);
-        setFromStage(null); setToStage(null); setFareInfo(null); setStages([]);
+        setFromStage(null); setToStage(null); setFareInfo(null); setFareError(null); setStages([]);
         fetchBusesForRoute(route._id);
         setBookingStep(2);
     };
 
     const handleBusSelect = async (bus) => {
         setSelectedBus(bus);
-        setFromStage(null); setToStage(null); setFareInfo(null);
+        setFromStage(null); setToStage(null); setFareInfo(null); setFareError(null);
         fetchStagesForRoute(selectedRoute._id);
         setSelectedSeats([]);
         await fetchBookedSeats(bus._id);
@@ -109,7 +113,7 @@ const BookTicket = () => {
 
     const handleFromStageSelect = (stage) => {
         setFromStage(stage);
-        setToStage(null); setFareInfo(null);
+        setToStage(null); setFareInfo(null); setFareError(null);
     };
 
     const handleToStageSelect = (stage) => {
@@ -121,9 +125,18 @@ const BookTicket = () => {
         if (fromStage) fetchFare(fromStage._id, stage._id, selectedBus._id);
     };
 
+    // FIX: block if fareInfo is null (not configured) — don't let ₹0 bookings through
     const proceedToSeats = () => {
         if (!fromStage || !toStage) { toast.error('Select both boarding and destination stages'); return; }
-        if (!fareInfo) { toast.error('Fare not calculated yet'); return; }
+        if (fareLoading) { toast.error('Fare is still calculating, please wait'); return; }
+        if (fareError || !fareInfo) {
+            toast.error('Fare could not be calculated. Ensure bus type fares are configured by admin.');
+            return;
+        }
+        if (fareInfo.fare <= 0) {
+            toast.error('Invalid fare amount. Contact admin to configure bus type fares.');
+            return;
+        }
         setSelectedSeats([]);
         setBookingStep(4);
     };
@@ -140,11 +153,11 @@ const BookTicket = () => {
     const handleBooking = async () => {
         if (selectedSeats.length === 0) { toast.error('Please select at least one seat'); return; }
         if (!bookingData.passengerName || !bookingData.passengerPhone) { toast.error('Please fill in all passenger details'); return; }
+        if (!fareInfo || fareInfo.fare <= 0) { toast.error('Invalid fare. Cannot complete booking.'); return; }
 
-        const totalAmount = fareInfo ? fareInfo.fare * selectedSeats.length : selectedSeats.length * 500;
+        const totalAmount = fareInfo.fare * selectedSeats.length;
 
         try {
-            // Try to find an active trip for this bus
             let tripId = null;
             try {
                 const tripsRes = await api.get('/trips/active');
@@ -154,7 +167,7 @@ const BookTicket = () => {
                     );
                     if (trip) tripId = trip._id;
                 }
-            } catch { /* no trip found */ }
+            } catch { }
 
             const payload = {
                 busId: selectedBus._id,
@@ -172,7 +185,6 @@ const BookTicket = () => {
             const response = await api.post('/bookings', payload);
             if (response.success) {
                 toast.success('Ticket booked successfully!');
-                // Build booking object for e-ticket display
                 const booking = response.data.booking || {};
                 setBookingResult({
                     ...booking,
@@ -190,18 +202,12 @@ const BookTicket = () => {
                 });
             }
         } catch (error) {
-            // If tripId is required but we don't have one, show friendly error
-            if (error?.message?.toLowerCase().includes('trip')) {
-                toast.error('No active trip for this bus. Ask the driver to start a trip first, or the booking will be saved without a trip.');
-            } else {
-                toast.error(error.message || 'Failed to book ticket');
-            }
+            toast.error(error.message || 'Failed to book ticket');
         }
     };
 
-    const totalFare = fareInfo ? fareInfo.fare * selectedSeats.length : selectedSeats.length * 500;
+    const totalFare = fareInfo ? fareInfo.fare * selectedSeats.length : 0;
 
-    // Seat grid helper
     const renderSeat = (seatNum) => {
         if (seatNum === null) return <div key={`gap-${Math.random()}`} style={{ width: 40 }} />;
         const isBooked = bookedSeats.includes(seatNum);
@@ -232,7 +238,6 @@ const BookTicket = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
-            {/* E-Ticket Modal */}
             {bookingResult && (
                 <ETicket
                     booking={bookingResult}
@@ -265,8 +270,16 @@ const BookTicket = () => {
                 {bookingStep === 1 && (
                     <div>
                         <h2 className="text-2xl font-bold text-white mb-6">Select Your Route</h2>
-                        {loading ? <div className="text-gray-300">Loading routes...</div> :
-                         routes.length === 0 ? <div className="text-gray-300">No routes available</div> : (
+                        {loading ? (
+                            <div className="flex items-center gap-3 text-gray-300">
+                                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                Loading routes...
+                            </div>
+                        ) : routes.length === 0 ? (
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 text-yellow-300">
+                                ⚠️ No routes available. Ask an admin to create routes first.
+                            </div>
+                        ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 {routes.map(route => (
                                     <div key={route._id} onClick={() => handleRouteSelect(route)}
@@ -296,7 +309,11 @@ const BookTicket = () => {
                     <div>
                         <button onClick={() => setBookingStep(1)} className="text-purple-400 hover:text-purple-300 mb-6 flex items-center gap-2">← Back to Routes</button>
                         <h2 className="text-2xl font-bold text-white mb-6">Select Your Bus</h2>
-                        {buses.length === 0 ? <div className="text-gray-300">No active buses for this route</div> : (
+                        {buses.length === 0 ? (
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 text-yellow-300">
+                                ⚠️ No active buses for this route. Ask an admin to assign a bus to this route.
+                            </div>
+                        ) : (
                             <div className="grid md:grid-cols-2 gap-4">
                                 {buses.map(bus => (
                                     <div key={bus._id} onClick={() => handleBusSelect(bus)}
@@ -355,6 +372,7 @@ const BookTicket = () => {
                                 </div>
                             </div>
                         )}
+
                         {(fromStage || toStage) && (
                             <div className="mt-6 bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-5">
                                 <div className="flex items-center justify-between">
@@ -365,6 +383,10 @@ const BookTicket = () => {
                                     </div>
                                     {fareLoading ? (
                                         <div className="flex items-center gap-2 text-gray-400"><Loader2 className="w-4 h-4 animate-spin" /> Calculating...</div>
+                                    ) : fareError ? (
+                                        <div className="flex items-center gap-2 text-red-400 text-sm">
+                                            <AlertTriangle className="w-4 h-4" /> {fareError}
+                                        </div>
                                     ) : fareInfo ? (
                                         <div className="text-right">
                                             <div className="text-3xl font-bold text-purple-300">₹{fareInfo.fare}</div>
@@ -374,8 +396,11 @@ const BookTicket = () => {
                                 </div>
                             </div>
                         )}
+
                         {stages.length > 0 && (
-                            <button onClick={proceedToSeats} className="mt-6 w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2">
+                            <button onClick={proceedToSeats}
+                                disabled={fareLoading || !!fareError || !fareInfo}
+                                className="mt-6 w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                                 Continue to Seat Selection <ArrowRight className="w-5 h-5" />
                             </button>
                         )}
@@ -387,11 +412,10 @@ const BookTicket = () => {
                     <div className="max-w-4xl mx-auto">
                         <button onClick={() => setBookingStep(3)} className="text-purple-400 hover:text-purple-300 mb-6">← Back to Stage Selection</button>
                         <div className="flex flex-col lg:flex-row gap-8">
-                            {/* Seat map */}
                             <div className="flex-1 bg-white rounded-xl p-8 text-slate-900 shadow-xl">
                                 <h3 className="text-xl font-bold mb-4 flex items-center"><span className="w-1 h-6 bg-purple-600 mr-3 rounded-full"></span>Select Seats</h3>
                                 <div className="flex justify-between mb-6 text-sm font-medium flex-wrap gap-2">
-                                    {[['Available','#f9fafb','#d1d5db'],['Booked','#e5e7eb','#9ca3af'],['Selected','#6366f1','white'],['Your choice','#10b981','white']].map(([label,bg,color]) => (
+                                    {[['Available','#f9fafb','#d1d5db'],['Booked','#e5e7eb','#9ca3af'],['Selected','#6366f1','white']].map(([label,bg,color]) => (
                                         <div key={label} className="flex items-center gap-2">
                                             <div style={{width:20,height:20,borderRadius:4,background:bg,border:`1px solid ${color === 'white' ? bg : '#d1d5db'}`}} />
                                             <span>{label}</span>
@@ -400,30 +424,21 @@ const BookTicket = () => {
                                 </div>
                                 <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 'max-content' }}>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {[1,8,9,16,17,24,25,32,33,40,null,47].map((n,i) => renderSeat(n))}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {[2,7,10,15,18,23,26,31,34,39,null,46].map((n,i) => renderSeat(n))}
-                                        </div>
+                                        <div style={{ display: 'flex', gap: 6 }}>{[1,8,9,16,17,24,25,32,33,40,null,47].map((n,i) => renderSeat(n))}</div>
+                                        <div style={{ display: 'flex', gap: 6 }}>{[2,7,10,15,18,23,26,31,34,39,null,46].map((n,i) => renderSeat(n))}</div>
                                         <div style={{ height: 32, display: 'flex', gap: 6, alignItems: 'center' }}>
                                             {Array(10).fill(null).map((_,i) => <div key={i} style={{width:40}} />)}
                                             <div style={{width:40}} />
                                             {renderSeat(45)}
                                         </div>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {[3,6,11,14,19,22,27,30,35,38,41,44].map(n => renderSeat(n))}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {[4,5,12,13,20,21,28,29,36,37,42,43].map(n => renderSeat(n))}
-                                        </div>
+                                        <div style={{ display: 'flex', gap: 6 }}>{[3,6,11,14,19,22,27,30,35,38,41,44].map(n => renderSeat(n))}</div>
+                                        <div style={{ display: 'flex', gap: 6 }}>{[4,5,12,13,20,21,28,29,36,37,42,43].map(n => renderSeat(n))}</div>
                                     </div>
                                 </div>
                                 {bookedSeats.length > 0 && (
                                     <p className="text-xs text-gray-400 mt-4">Seats already booked: {bookedSeats.join(', ')}</p>
                                 )}
                             </div>
-                            {/* Summary */}
                             <div className="lg:w-72 shrink-0">
                                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-xl p-6 sticky top-24">
                                     <h3 className="text-xl font-bold text-white mb-4">Your Selection</h3>
@@ -435,6 +450,7 @@ const BookTicket = () => {
                                         <div className="flex justify-between"><span>To</span><span className="font-semibold text-white">{toStage?.stageName}</span></div>
                                         <div className="border-t border-white/10 pt-3">
                                             <div className="flex justify-between mb-2"><span>Seats ({selectedSeats.length})</span><span className="font-semibold text-purple-400">{selectedSeats.join(', ') || '-'}</span></div>
+                                            <div className="flex justify-between"><span>Fare/seat</span><span className="text-green-300">₹{fareInfo?.fare || 0}</span></div>
                                             <div className="flex justify-between text-xl font-bold text-white mt-4"><span>Total</span><span>₹{totalFare}</span></div>
                                         </div>
                                     </div>
@@ -468,9 +484,9 @@ const BookTicket = () => {
                                             ))}
                                         </div>
                                     </div>
-                                    <div className="border-t border-white/10 pt-3 flex justify-between">
-                                        <span>Total Amount</span>
-                                        <span className="text-2xl font-bold text-white">₹{totalFare}</span>
+                                    <div className="border-t border-white/10 pt-3">
+                                        <div className="flex justify-between"><span>Fare per seat</span><span className="text-green-300 font-medium">₹{fareInfo?.fare}</span></div>
+                                        <div className="flex justify-between text-xl font-bold text-white mt-2"><span>Total</span><span>₹{totalFare}</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -512,5 +528,8 @@ const BookTicket = () => {
         </div>
     );
 };
+
+// re-export CreditCard used in step 5
+import { CreditCard } from 'lucide-react';
 
 export default BookTicket;

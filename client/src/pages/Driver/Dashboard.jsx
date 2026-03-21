@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Play, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
@@ -14,10 +14,14 @@ const DriverDashboard = () => {
     const [delayMinutes, setDelayMinutes] = useState('');
     const [delayReason, setDelayReason] = useState('');
     const [reportingDelay, setReportingDelay] = useState(false);
+    const [busLoading, setBusLoading] = useState(true);
+
+    // FIX: keep a ref to myBus so startLocationSharing closure always has current value
+    const myBusRef = useRef(null);
+    useEffect(() => { myBusRef.current = myBus; }, [myBus]);
 
     useEffect(() => {
         fetchMyBus();
-        fetchCurrentTrip();
     }, []);
 
     const fetchMyBus = async () => {
@@ -25,19 +29,25 @@ const DriverDashboard = () => {
             const response = await api.get('/buses');
             if (response.success) {
                 const assignedBus = response.data.buses.find(b => b.driverId?._id === user.id);
-                setMyBus(assignedBus);
+                setMyBus(assignedBus || null);
+                myBusRef.current = assignedBus || null;
+                // FIX: only fetch current trip AFTER we know the bus, passing it directly
+                await fetchCurrentTrip(assignedBus);
             }
         } catch (error) {
             toast.error('Failed to fetch bus info');
+        } finally {
+            setBusLoading(false);
         }
     };
 
-    const fetchCurrentTrip = async () => {
+    // FIX: accept bus as param so we don't depend on state timing
+    const fetchCurrentTrip = async (bus) => {
         try {
             const response = await api.get('/trips/my-current');
             if (response.success && response.data.trip) {
                 setCurrentTrip(response.data.trip);
-                startLocationSharing();
+                if (bus) startLocationSharing(bus);
             }
         } catch (error) {
             console.error('Failed to fetch current trip');
@@ -58,9 +68,10 @@ const DriverDashboard = () => {
             if (response.success) {
                 setCurrentTrip(response.data.trip);
                 toast.success('Trip started!');
-                startLocationSharing();
+                startLocationSharing(myBus);
 
-                // Emit trip start event
+                // FIX: guard socket connection before emitting
+                if (!socket.connected) socket.connect();
                 socket.emit('driver:trip-start', {
                     tripId: response.data.trip._id,
                     busId: myBus._id
@@ -79,16 +90,15 @@ const DriverDashboard = () => {
 
             if (response.success) {
                 toast.success('Trip ended!');
+                const tripId = currentTrip._id;
+                const busId = myBus?._id;
                 setCurrentTrip(null);
                 stopLocationSharing();
                 setDelayMinutes('');
                 setDelayReason('');
 
-                // Emit trip end event
-                socket.emit('driver:trip-end', {
-                    tripId: currentTrip._id,
-                    busId: myBus._id
-                });
+                if (!socket.connected) socket.connect();
+                socket.emit('driver:trip-end', { tripId, busId });
             }
         } catch (error) {
             toast.error(error.message || 'Failed to end trip');
@@ -124,7 +134,12 @@ const DriverDashboard = () => {
         }
     };
 
-    const startLocationSharing = () => {
+    // FIX: accept bus as param so this never reads stale null state
+    const startLocationSharing = (bus) => {
+        if (!bus) {
+            toast.error('No bus assigned — cannot share location');
+            return;
+        }
         if (!navigator.geolocation) {
             toast.error('Geolocation not supported');
             return;
@@ -134,9 +149,9 @@ const DriverDashboard = () => {
             (position) => {
                 const { latitude, longitude, speed } = position.coords;
 
-                // Emit location update
+                if (!socket.connected) socket.connect();
                 socket.emit('driver:location-update', {
-                    busId: myBus._id,
+                    busId: bus._id,
                     lat: latitude,
                     lng: longitude,
                     speed: speed || 0
@@ -148,11 +163,7 @@ const DriverDashboard = () => {
                 console.error('Geolocation error:', error);
                 toast.error('Failed to get location');
             },
-            {
-                enableHighAccuracy: true,
-                timeout: 5000,
-                maximumAge: 0
-            }
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
 
         setWatchId(id);
@@ -169,7 +180,6 @@ const DriverDashboard = () => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
             <div className="max-w-4xl mx-auto">
-                {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-4xl font-bold text-white mb-2">Driver Dashboard</h1>
                     <p className="text-gray-300">Manage your trips and share live location</p>
@@ -178,7 +188,12 @@ const DriverDashboard = () => {
                 {/* Bus Info Card */}
                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
                     <h2 className="text-2xl font-bold text-white mb-4">My Bus</h2>
-                    {myBus ? (
+                    {busLoading ? (
+                        <div className="flex items-center gap-3 text-gray-400">
+                            <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                            Loading bus info...
+                        </div>
+                    ) : myBus ? (
                         <div className="space-y-3">
                             <div className="flex justify-between">
                                 <span className="text-gray-300">Bus Number:</span>
@@ -189,19 +204,26 @@ const DriverDashboard = () => {
                                 <span className="text-white font-semibold">{myBus.routeId?.routeName || 'Not assigned'}</span>
                             </div>
                             <div className="flex justify-between">
+                                <span className="text-gray-300">Type:</span>
+                                <span className="text-white font-semibold">{myBus.busType || 'Ordinary'}</span>
+                            </div>
+                            <div className="flex justify-between">
                                 <span className="text-gray-300">Capacity:</span>
                                 <span className="text-white font-semibold">{myBus.capacity} seats</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-gray-300">Status:</span>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${myBus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
-                                    }`}>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                    myBus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
+                                }`}>
                                     {myBus.status}
                                 </span>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-gray-400">No bus assigned</p>
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-300 text-sm">
+                            ⚠️ No bus is assigned to your account. Contact an admin to get assigned to a bus before starting a trip.
+                        </div>
                     )}
                 </div>
 
@@ -239,11 +261,11 @@ const DriverDashboard = () => {
                             <p className="text-gray-400">No active trip</p>
                             <button
                                 onClick={startTrip}
-                                disabled={!myBus}
+                                disabled={!myBus || busLoading}
                                 className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-600 transition flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Play className="w-5 h-5" />
-                                <span>Start Trip</span>
+                                <span>{busLoading ? 'Loading...' : 'Start Trip'}</span>
                             </button>
                         </div>
                     )}

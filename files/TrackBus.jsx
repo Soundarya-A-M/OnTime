@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Bus, Navigation, Clock, Zap } from 'lucide-react';
+import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff } from 'lucide-react';
 import L from 'leaflet';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -29,15 +29,12 @@ function ChangeView({ center, zoom }) {
     return null;
 }
 
-// Parse a saved Mapbox GeoJSON polyline string into Leaflet [[lat,lng]] array
 const parsePolyline = (polylineStr) => {
     if (!polylineStr) return [];
     try {
         const geojson = JSON.parse(polylineStr);
-        if (geojson.coordinates) {
-            return geojson.coordinates.map(([lng, lat]) => [lat, lng]);
-        }
-    } catch { /* ignore */ }
+        if (geojson.coordinates) return geojson.coordinates.map(([lng, lat]) => [lat, lng]);
+    } catch { }
     return [];
 };
 
@@ -49,19 +46,20 @@ const TrackBus = () => {
     const [loading, setLoading] = useState(true);
     const [routeCoordinates, setRouteCoordinates] = useState([]);
     const [delayInfo, setDelayInfo] = useState(null);
-    const [etaInfo, setEtaInfo] = useState(null); // { distance, eta, etaText }
+    const [etaInfo, setEtaInfo] = useState(null);
+    // FIX #9: mobile sidebar state
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [isConnected, setIsConnected] = useState(socket.connected);
     const selectedBusRef = useRef(null);
 
     useEffect(() => { selectedBusRef.current = selectedBus; }, [selectedBus]);
 
-    // Recalculate ETA whenever selected bus location or speed changes
     const recalculateETA = useCallback((bus) => {
         if (!bus) { setEtaInfo(null); return; }
         const currentLoc = bus.currentLocation?.coordinates;
         const route = bus.routeId;
         if (!currentLoc || !route) { setEtaInfo(null); return; }
 
-        // Use destination as ETA target (last stop or destinationCoordinates)
         let dest = null;
         if (route.destinationCoordinates?.lat) {
             dest = { lat: route.destinationCoordinates.lat, lng: route.destinationCoordinates.lng };
@@ -69,32 +67,31 @@ const TrackBus = () => {
             const last = route.stops[route.stops.length - 1];
             dest = { lat: last.coordinates.lat, lng: last.coordinates.lng };
         }
-
         if (!dest) { setEtaInfo(null); return; }
 
         const speed = bus.currentLocation?.speed || 0;
-        const eta = calculateETA(currentLoc, dest, speed);
-        setEtaInfo(eta);
+        setEtaInfo(calculateETA(currentLoc, dest, speed));
     }, []);
 
     useEffect(() => {
         fetchActiveBuses();
-        setupSocketListeners();
-        return () => {
-            socket.off('bus:location-updated');
-            socket.off('trip:delay');
+
+        // FIX #23: socket connection status tracking
+        const handleConnect = () => setIsConnected(true);
+        const handleDisconnect = () => {
+            setIsConnected(false);
+            toast.error('Lost real-time connection. Locations may be stale.', { id: 'track-disconnect', duration: 0 });
         };
-    }, []);
+        const handleReconnect = () => {
+            setIsConnected(true);
+            toast.dismiss('track-disconnect');
+            toast.success('Reconnected — live tracking resumed.', { duration: 3000 });
+        };
 
-    const fetchActiveBuses = async () => {
-        try {
-            const response = await api.get('/buses?status=active');
-            if (response.success) setBuses(response.data.buses);
-        } catch { toast.error('Failed to fetch buses'); }
-        finally { setLoading(false); }
-    };
+        socket.on('connect', handleConnect);
+        socket.on('connect', handleReconnect);
+        socket.on('disconnect', handleDisconnect);
 
-    const setupSocketListeners = () => {
         if (!socket.connected) socket.connect();
 
         socket.on('bus:location-updated', (data) => {
@@ -108,10 +105,7 @@ const TrackBus = () => {
             if (selectedBusRef.current?._id === data.busId) {
                 setSelectedBus(prev => {
                     if (!prev) return prev;
-                    const updated = {
-                        ...prev,
-                        currentLocation: { coordinates: { lat: data.lat, lng: data.lng }, lastUpdated: new Date(), speed: data.location?.speed || 0 }
-                    };
+                    const updated = { ...prev, currentLocation: { coordinates: { lat: data.lat, lng: data.lng }, lastUpdated: new Date(), speed: data.location?.speed || 0 } };
                     recalculateETA(updated);
                     return updated;
                 });
@@ -123,28 +117,38 @@ const TrackBus = () => {
                 setDelayInfo(data);
             }
         });
+
+        return () => {
+            socket.off('bus:location-updated');
+            socket.off('trip:delay');
+            socket.off('connect', handleConnect);
+            socket.off('connect', handleReconnect);
+            socket.off('disconnect', handleDisconnect);
+        };
+    }, [recalculateETA]);
+
+    const fetchActiveBuses = async () => {
+        try {
+            const response = await api.get('/buses?status=active');
+            if (response.success) setBuses(response.data.buses);
+        } catch { toast.error('Failed to fetch buses'); }
+        finally { setLoading(false); }
     };
 
     const handleBusClick = (bus) => {
         setSelectedBus(bus);
         setDelayInfo(null);
+        setSidebarOpen(false); // close mobile drawer on selection
 
         if (bus.currentLocation?.coordinates) {
             setCenter([bus.currentLocation.coordinates.lat, bus.currentLocation.coordinates.lng]);
             setZoom(16);
         }
 
-        // Draw route: prefer saved polyline, fall back to stops
         const route = bus.routeId;
         if (route) {
             const poly = parsePolyline(route.polyline);
-            if (poly.length > 0) {
-                setRouteCoordinates(poly);
-            } else if (route.stops?.length > 0) {
-                setRouteCoordinates(route.stops.map(s => [s.coordinates.lat, s.coordinates.lng]));
-            } else {
-                setRouteCoordinates([]);
-            }
+            setRouteCoordinates(poly.length > 0 ? poly : route.stops?.length > 0 ? route.stops.map(s => [s.coordinates.lat, s.coordinates.lng]) : []);
         } else {
             setRouteCoordinates([]);
         }
@@ -154,83 +158,131 @@ const TrackBus = () => {
 
     const formatSpeed = (speed) => {
         if (!speed || speed === 0) return 'Stationary';
-        return `${Math.round(speed * 3.6)} km/h`; // m/s to km/h
+        return `${Math.round(speed * 3.6)} km/h`;
     };
 
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20">
-            <div className="h-[calc(100vh-5rem)] flex">
-                {/* Sidebar */}
-                <div className="w-80 bg-black/20 backdrop-blur-lg border-r border-white/10 p-4 overflow-y-auto flex flex-col gap-3">
-                    <h2 className="text-xl font-bold text-white">Active Buses</h2>
+    const SidebarContent = () => (
+        <div className="flex flex-col gap-3 p-4">
+            {/* Connection indicator */}
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${isConnected ? 'bg-green-500/10 text-green-300 border border-green-500/20' : 'bg-red-500/10 text-red-300 border border-red-500/20'}`}>
+                {isConnected ? (
+                    <><div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" /> Live tracking active</>
+                ) : (
+                    <><WifiOff className="w-3.5 h-3.5" /> Reconnecting...</>
+                )}
+            </div>
 
-                    {/* ETA panel for selected bus */}
-                    {selectedBus && (
-                        <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Zap className="w-4 h-4 text-purple-400" />
-                                <span className="text-purple-300 font-semibold text-sm">Live ETA — {selectedBus.busNumber}</span>
+            <h2 className="text-xl font-bold text-white">Active Buses</h2>
+
+            {/* ETA panel for selected bus */}
+            {selectedBus && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Zap className="w-4 h-4 text-purple-400" />
+                        <span className="text-purple-300 font-semibold text-sm">Live ETA — {selectedBus.busNumber}</span>
+                    </div>
+                    {etaInfo ? (
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="bg-black/20 rounded-lg p-2 text-center">
+                                <div className="text-white font-bold text-lg">{etaInfo.etaText}</div>
+                                <div className="text-gray-400 text-xs">to destination</div>
                             </div>
-                            {etaInfo ? (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="bg-black/20 rounded-lg p-2 text-center">
-                                        <div className="text-white font-bold text-lg">{etaInfo.etaText}</div>
-                                        <div className="text-gray-400 text-xs">to destination</div>
-                                    </div>
-                                    <div className="bg-black/20 rounded-lg p-2 text-center">
-                                        <div className="text-white font-bold text-lg">{etaInfo.distance} km</div>
-                                        <div className="text-gray-400 text-xs">remaining</div>
-                                    </div>
-                                    <div className="col-span-2 bg-black/20 rounded-lg p-2 text-center">
-                                        <div className="text-green-300 font-medium text-sm">{formatSpeed(selectedBus.currentLocation?.speed)}</div>
-                                        <div className="text-gray-400 text-xs">current speed</div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-gray-400 text-xs">Location data needed for ETA calculation. Driver must start trip.</p>
-                            )}
+                            <div className="bg-black/20 rounded-lg p-2 text-center">
+                                <div className="text-white font-bold text-lg">{etaInfo.distance} km</div>
+                                <div className="text-gray-400 text-xs">remaining</div>
+                            </div>
+                            <div className="col-span-2 bg-black/20 rounded-lg p-2 text-center">
+                                <div className="text-green-300 font-medium text-sm">{formatSpeed(selectedBus.currentLocation?.speed)}</div>
+                                <div className="text-gray-400 text-xs">current speed</div>
+                            </div>
                         </div>
-                    )}
-
-                    {loading ? (
-                        <div className="text-gray-300 text-sm">Loading buses...</div>
-                    ) : buses.length === 0 ? (
-                        <div className="text-gray-300 text-sm">No active buses</div>
                     ) : (
-                        <div className="space-y-2">
-                            {buses.map(bus => (
-                                <div key={bus._id} onClick={() => handleBusClick(bus)}
-                                    className={`bg-white/10 border rounded-lg p-3 cursor-pointer hover:bg-white/20 transition ${selectedBus?._id === bus._id ? 'border-purple-500 bg-white/15' : 'border-white/10'}`}>
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Bus className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                                                <span className="font-semibold text-white text-sm truncate">{bus.busNumber}</span>
-                                            </div>
-                                            <p className="text-xs text-gray-300 truncate">{bus.routeId?.routeName || 'No route'}</p>
-                                            {bus.currentLocation?.lastUpdated && (
-                                                <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
-                                                    <Clock className="w-3 h-3" />
-                                                    <span>{new Date(bus.currentLocation.lastUpdated).toLocaleTimeString()}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}`}>
-                                            {bus.status}
-                                        </span>
+                        <p className="text-gray-400 text-xs">Location data needed for ETA. Driver must start trip.</p>
+                    )}
+                </div>
+            )}
+
+            {loading ? (
+                <div className="flex items-center gap-2 text-gray-300 text-sm">
+                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                    Loading buses...
+                </div>
+            ) : buses.length === 0 ? (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center text-gray-400 text-sm">
+                    No active buses right now.
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {buses.map(bus => (
+                        <div key={bus._id} onClick={() => handleBusClick(bus)}
+                            className={`bg-white/10 border rounded-lg p-3 cursor-pointer hover:bg-white/20 transition ${selectedBus?._id === bus._id ? 'border-purple-500 bg-white/15' : 'border-white/10'}`}>
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Bus className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                                        <span className="font-semibold text-white text-sm truncate">{bus.busNumber}</span>
                                     </div>
-                                    {/* Mini ETA for each bus in list */}
-                                    {selectedBus?._id === bus._id && etaInfo && (
-                                        <div className="mt-2 pt-2 border-t border-white/10 flex gap-3 text-xs">
-                                            <span className="text-purple-300 font-semibold">{etaInfo.etaText}</span>
-                                            <span className="text-gray-400">{etaInfo.distance} km left</span>
+                                    <p className="text-xs text-gray-300 truncate">{bus.routeId?.routeName || 'No route'}</p>
+                                    {/* FIX #10: show "no live location" when driver hasn't started trip */}
+                                    {bus.currentLocation?.lastUpdated ? (
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
+                                            <Clock className="w-3 h-3" />
+                                            <span>{new Date(bus.currentLocation.lastUpdated).toLocaleTimeString()}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-amber-500/70">
+                                            <Clock className="w-3 h-3" />
+                                            <span>No live location yet</span>
                                         </div>
                                     )}
                                 </div>
-                            ))}
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}`}>
+                                    {bus.status}
+                                </span>
+                            </div>
+                            {selectedBus?._id === bus._id && etaInfo && (
+                                <div className="mt-2 pt-2 border-t border-white/10 flex gap-3 text-xs">
+                                    <span className="text-purple-300 font-semibold">{etaInfo.etaText}</span>
+                                    <span className="text-gray-400">{etaInfo.distance} km left</span>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    ))}
                 </div>
+            )}
+        </div>
+    );
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-16">
+            <div className="h-[calc(100vh-4rem)] flex relative">
+                {/* Desktop sidebar */}
+                <div className="hidden md:block w-80 bg-black/20 backdrop-blur-lg border-r border-white/10 overflow-y-auto flex-shrink-0">
+                    <SidebarContent />
+                </div>
+
+                {/* Mobile sidebar toggle button */}
+                <button
+                    onClick={() => setSidebarOpen(true)}
+                    className="md:hidden absolute top-3 left-3 z-20 bg-black/60 backdrop-blur-lg border border-white/20 text-white p-2.5 rounded-xl shadow-lg"
+                >
+                    <Menu className="w-5 h-5" />
+                </button>
+
+                {/* Mobile sidebar drawer */}
+                {sidebarOpen && (
+                    <>
+                        <div className="md:hidden fixed inset-0 z-30 bg-black/60 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+                        <div className="md:hidden fixed left-0 top-16 bottom-0 z-40 w-80 max-w-[85vw] bg-slate-900 border-r border-white/10 overflow-y-auto">
+                            <div className="flex justify-end p-3">
+                                <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white p-1">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <SidebarContent />
+                        </div>
+                    </>
+                )}
 
                 {/* Map */}
                 <div className="flex-1 relative">
@@ -245,7 +297,7 @@ const TrackBus = () => {
                             <Polyline positions={routeCoordinates} color="#8b5cf6" weight={4} opacity={0.75} dashArray="8 4" />
                         )}
                         {buses.map(bus => {
-                            if (!bus.currentLocation?.coordinates) return null;
+                            if (!bus.currentLocation?.coordinates?.lat) return null;
                             return (
                                 <Marker key={bus._id}
                                     position={[bus.currentLocation.coordinates.lat, bus.currentLocation.coordinates.lng]}
@@ -287,6 +339,11 @@ const TrackBus = () => {
                                 <div><span className="text-gray-400">Driver:</span> <span className="text-white">{selectedBus.driverId?.name || 'Not assigned'}</span></div>
                                 <div><span className="text-gray-400">Type:</span> <span className="text-white">{selectedBus.busType || 'Ordinary'}</span></div>
                                 <div><span className="text-gray-400">Status:</span> <span className={`font-bold ${selectedBus.status === 'active' ? 'text-green-400' : 'text-gray-300'}`}>{selectedBus.status?.toUpperCase()}</span></div>
+                                {!selectedBus.currentLocation?.coordinates?.lat && (
+                                    <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs">
+                                        ⚠️ No live location. Driver hasn't started a trip yet.
+                                    </div>
+                                )}
                                 {etaInfo && (
                                     <div className="mt-3 pt-3 border-t border-white/10">
                                         <div className="flex items-center gap-2 mb-2">
