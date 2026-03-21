@@ -529,7 +529,5 @@ const BookTicket = () => {
     );
 };
 
-// re-export CreditCard used in step 5
-import { CreditCard } from 'lucide-react';
 
 export default BookTicket;

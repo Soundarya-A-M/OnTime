@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Mail, Phone, Lock, Save, ArrowLeft, Shield, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../../config/api';
-import { useAuthStore } from '../../store/authStore';
+import api from '../config/api';
+import { useAuthStore } from '../store/authStore';
 
 const Profile = () => {
     const { user, updateUser, logout } = useAuthStore();
