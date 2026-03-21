@@ -24,28 +24,36 @@ const AdminDashboard = () => {
 
     const fetchData = async () => {
         try {
-            const [busesRes, routesRes, tripsRes] = await Promise.all([
+            const [busesResult, routesResult, tripsResult] = await Promise.allSettled([
                 api.get('/buses'),
                 api.get('/routes'),
                 api.get('/trips/active')
             ]);
 
-            if (busesRes.success) {
+            if (busesResult.status === 'fulfilled' && busesResult.value.success) {
+                const busesRes = busesResult.value;
                 setBuses(busesRes.data.buses);
                 setStats(prev => ({
                     ...prev,
                     totalBuses: busesRes.data.count,
                     activeBuses: busesRes.data.buses.filter(b => b.status === 'active').length
                 }));
+            } else if (busesResult.status === 'rejected') {
+                console.warn('Buses fetch failed:', busesResult.reason);
             }
 
-            if (routesRes.success) {
+            if (routesResult.status === 'fulfilled' && routesResult.value.success) {
+                const routesRes = routesResult.value;
                 setRoutes(routesRes.data.routes);
                 setStats(prev => ({ ...prev, totalRoutes: routesRes.data.count }));
+            } else if (routesResult.status === 'rejected') {
+                console.warn('Routes fetch failed:', routesResult.reason);
             }
 
-            if (tripsRes.success) {
-                setStats(prev => ({ ...prev, activeTrips: tripsRes.data.count }));
+            if (tripsResult.status === 'fulfilled' && tripsResult.value.success) {
+                setStats(prev => ({ ...prev, activeTrips: tripsResult.value.data.count }));
+            } else if (tripsResult.status === 'rejected') {
+                console.warn('Trips fetch failed:', tripsResult.reason);
             }
         } catch (error) {
             toast.error('Failed to fetch data');

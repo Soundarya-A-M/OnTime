@@ -17,7 +17,17 @@ import LandingPage from './pages/LandingPage';
 import { useAuthStore } from './store/authStore';
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+
+  const getHomePath = () => {
+    if (!isAuthenticated || !user) return '/';
+    const dashboardMap = {
+      passenger: '/dashboard',
+      driver: '/driver/dashboard',
+      admin: '/admin/dashboard'
+    };
+    return dashboardMap[user.role] || '/';
+  };
 
   return (
     <BrowserRouter>
@@ -40,11 +50,11 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />}
+          element={isAuthenticated ? <Navigate to={getHomePath()} /> : <Login />}
         />
         <Route
           path="/register"
-          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />}
+          element={isAuthenticated ? <Navigate to={getHomePath()} /> : <Register />}
         />
 
         {/* User Routes */}

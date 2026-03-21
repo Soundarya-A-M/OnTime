@@ -111,8 +111,7 @@ const AddBus = () => {
                                     maxLength="2"
                                     value={busNumPart1}
                                     onChange={(e) => setBusNumPart1(e.target.value)}
-                                    placeholder="09"
-                                    className="w-16 sm:w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-3 text-white text-center font-bold focus:outline-none focus:border-purple-500 transition"
+                                        className="w-16 sm:w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-3 text-white text-center font-bold focus:outline-none focus:border-purple-500 transition"
                                     required
                                 />
                                 <div className="bg-gray-800 text-white font-bold px-4 py-3 rounded-lg border border-gray-600 shadow-inner">
@@ -123,12 +122,10 @@ const AddBus = () => {
                                     maxLength="4"
                                     value={busNumPart2}
                                     onChange={(e) => setBusNumPart2(e.target.value)}
-                                    placeholder="7777"
-                                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-3 text-white text-center font-bold focus:outline-none focus:border-purple-500 transition"
+                                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-3 text-white text-center font-bold focus:outline-none focus:border-purple-500 transition"
                                     required
                                 />
                             </div>
-                            <p className="text-xs text-gray-400 mt-2">Example: KA 09 F 7777</p>
                         </div>
 
                         {/* Bus Details */}
