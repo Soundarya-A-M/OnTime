@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { X, Printer, MapPin, Calendar, User, Bus, Hash, CheckCircle } from 'lucide-react';
+import { X, Printer, Download, MapPin, Calendar, User, Bus, Hash, CheckCircle } from 'lucide-react';
 
 const RealQR = ({ value, size = 80 }) => {
     const canvasRef = useRef(null);
@@ -96,15 +96,34 @@ const ETicket = ({ booking, onClose }) => {
         }, 500);
     };
 
+    const handleDownload = async () => {
+        const el = ticketRef.current;
+        if (!el) return;
+        try {
+            const html2canvas = (await import('html2canvas')).default;
+            const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `OnTime_Ticket_${ticketId}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        } catch {
+            // Fallback: open print dialog
+            handlePrint();
+        }
+    };
+
     return (
-        <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem', overflowY:'auto' }}>
-            <div style={{ width:'100%', maxWidth:'480px' }}>
+        <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(8px)', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem', overflowY:'auto', cursor:'pointer' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width:'100%', maxWidth:'480px', cursor:'default' }}>
                 {/* Action bar */}
                 <div className="no-print" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
                     <span style={{ color:'white', fontWeight:600, fontSize:'15px' }}>Your E-Ticket</span>
                     <div style={{ display:'flex', gap:'8px' }}>
+                        <button onClick={handleDownload} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 14px', borderRadius:'8px', background:'rgba(16,185,129,0.9)', border:'none', color:'white', cursor:'pointer', fontWeight:600, fontSize:'13px' }}>
+                            <Download size={14} /> Download
+                        </button>
                         <button onClick={handlePrint} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 14px', borderRadius:'8px', background:'rgba(139,92,246,0.9)', border:'none', color:'white', cursor:'pointer', fontWeight:600, fontSize:'13px' }}>
-                            <Printer size={14} /> Print / Save
+                            <Printer size={14} /> Print
                         </button>
                         <button onClick={onClose} style={{ padding:'8px', borderRadius:'8px', background:'rgba(255,255,255,0.15)', border:'none', color:'white', cursor:'pointer', display:'flex', alignItems:'center' }}>
                             <X size={16} />
@@ -216,6 +235,11 @@ const ETicket = ({ booking, onClose }) => {
                         <div style={{ fontSize:'11px', color:'#475569' }}>Computer-generated ticket. Valid ID required during travel. • OnTime Bus Tracking System</div>
                     </div>
                 </div>
+
+                {/* Prominent close button */}
+                <button onClick={onClose} className="no-print" style={{ width:'100%', marginTop:'12px', padding:'14px', borderRadius:'12px', border:'none', background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'white', fontSize:'15px', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                    ✓ Done — Back to Dashboard
+                </button>
             </div>
         </div>
     );

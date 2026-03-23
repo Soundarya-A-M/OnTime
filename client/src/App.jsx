@@ -13,6 +13,7 @@ import RouteManagement from './pages/Admin/RouteManagement';
 import StageManagement from './pages/Admin/StageManagement';
 import BusTypeFareManagement from './pages/Admin/BusTypeFareManagement';
 import AddBus from './pages/Admin/AddBus';
+import CrewManagement from './pages/Admin/CrewManagement';
 import LandingPage from './pages/LandingPage';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
@@ -77,6 +78,7 @@ function App() {
                 <Route path="/admin/stages" element={<ProtectedRoute allowedRoles={['admin']}><StageManagement /></ProtectedRoute>} />
                 <Route path="/admin/bus-fares" element={<ProtectedRoute allowedRoles={['admin']}><BusTypeFareManagement /></ProtectedRoute>} />
                 <Route path="/admin/add-bus" element={<ProtectedRoute allowedRoles={['admin']}><AddBus /></ProtectedRoute>} />
+                <Route path="/admin/crew" element={<ProtectedRoute allowedRoles={['admin']}><CrewManagement /></ProtectedRoute>} />
 
                 {/* FIX #1: proper 404 instead of silent redirect */}
                 <Route path="*" element={<NotFound />} />

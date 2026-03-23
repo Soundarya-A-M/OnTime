@@ -72,13 +72,20 @@ const AdminDashboard = () => {
                 </div>
 
                 {/* Quick Access Cards */}
-                <div className="grid md:grid-cols-4 gap-4 mb-8">
+                <div className="grid md:grid-cols-5 gap-4 mb-8">
                     <Link to="/admin/add-bus" className="bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 rounded-2xl p-6 hover:from-indigo-500/30 hover:to-purple-500/30 transition group">
                         <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
                             <Bus className="w-6 h-6 text-white" />
                         </div>
                         <h3 className="text-white font-bold text-lg">Add Bus</h3>
-                        <p className="text-indigo-300 text-sm mt-1">Register new bus & crew</p>
+                        <p className="text-indigo-300 text-sm mt-1">Register new bus</p>
+                    </Link>
+                    <Link to="/admin/crew" className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-6 hover:from-amber-500/30 hover:to-orange-500/30 transition group">
+                        <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                            <Users className="w-6 h-6 text-white" />
+                        </div>
+                        <h3 className="text-white font-bold text-lg">Crew</h3>
+                        <p className="text-amber-300 text-sm mt-1">Manage drivers & crew</p>
                     </Link>
                     <Link to="/admin/routes" className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30 rounded-2xl p-6 hover:from-blue-500/30 hover:to-cyan-500/30 transition group">
                         <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mb-3 group-hover:scale-110 transition">

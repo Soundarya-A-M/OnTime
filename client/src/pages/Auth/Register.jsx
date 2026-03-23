@@ -116,19 +116,8 @@ const Register = () => {
                             </div>
                         </div>
 
-                        {/* Role Selection — admin removed from public registration */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-200 mb-2">I am a</label>
-                            <select
-                                value={formData.role}
-                                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            >
-                                <option value="passenger" className="bg-slate-800">Passenger</option>
-                                <option value="driver" className="bg-slate-800">Driver</option>
-                            </select>
-                            <p className="text-gray-500 text-xs mt-1">Admin accounts are created by system administrators only.</p>
-                        </div>
+                        {/* Role is always 'passenger' for public registration */}
+                        {/* Crew members (drivers) are registered by the admin only */}
 
                         <button
                             type="submit"

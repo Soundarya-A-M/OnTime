@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff } from 'lucide-react';
+import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin } from 'lucide-react';
 import L from 'leaflet';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -8,6 +8,8 @@ import toast from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import DelayBanner from '../../components/Notifications/DelayBanner';
 import { calculateETA } from '../../utils/etaCalculator';
+import { useStageLocation } from '../../hooks/useStageLocation';
+import StageBusMarker from '../../components/Map/StageBusMarker';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -51,6 +53,7 @@ const TrackBus = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isConnected, setIsConnected] = useState(socket.connected);
     const selectedBusRef = useRef(null);
+    const stageLocations = useStageLocation(buses);
 
     useEffect(() => { selectedBusRef.current = selectedBus; }, [selectedBus]);
 
@@ -235,6 +238,12 @@ const TrackBus = () => {
                                             <span>No live location yet</span>
                                         </div>
                                     )}
+                                    {stageLocations[bus._id] && (
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-purple-400">
+                                            <MapPin className="w-3 h-3" />
+                                            <span>{stageLocations[bus._id].stageName}</span>
+                                        </div>
+                                    )}
                                 </div>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}`}>
                                     {bus.status}
@@ -318,6 +327,20 @@ const TrackBus = () => {
                                 </Marker>
                             );
                         })}
+                        {/* Stage-based markers — rendered alongside GPS markers */}
+                        {buses.map(bus => {
+                            const sl = stageLocations[bus._id];
+                            if (!sl?.lat) return null;
+                            return (
+                                <StageBusMarker
+                                    key={`stage-${bus._id}`}
+                                    busNumber={bus.busNumber}
+                                    stageName={sl.stageName}
+                                    lat={sl.lat}
+                                    lng={sl.lng}
+                                />
+                            );
+                        })}
                         {selectedBus?.routeId?.stops?.map((stop, index) => (
                             <Marker key={index} position={[stop.coordinates.lat, stop.coordinates.lng]}>
                                 <Popup><div className="p-2"><div className="font-bold">{stop.name}</div><div className="text-xs text-gray-500">Stop {index + 1}</div></div></Popup>
@@ -342,6 +365,14 @@ const TrackBus = () => {
                                 {!selectedBus.currentLocation?.coordinates?.lat && (
                                     <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs">
                                         ⚠️ No live location. Driver hasn't started a trip yet.
+                                    </div>
+                                )}
+                                {stageLocations[selectedBus._id] && (
+                                    <div className="mt-2 pt-2 border-t border-white/10">
+                                        <div className="text-xs text-gray-400">Last confirmed stage</div>
+                                        <div className="text-purple-300 font-semibold text-sm">
+                                            {stageLocations[selectedBus._id].stageName}
+                                        </div>
                                     </div>
                                 )}
                                 {etaInfo && (

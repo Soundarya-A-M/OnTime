@@ -29,6 +29,7 @@ const Navbar = () => {
         ...(user?.role === 'admin' ? [
             { to: '/admin/routes', label: 'Routes' },
             { to: '/admin/add-bus', label: 'Add Bus' },
+            { to: '/admin/crew', label: 'Crew' },
         ] : []),
     ] : [];
 

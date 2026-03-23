@@ -1,5 +1,7 @@
 import Trip from '../models/Trip.js';
 import Bus from '../models/Bus.js';
+import Stage from '../models/Stage.js';
+import { getIO } from '../socket/ioInstance.js';
 
 // Start a new trip (Driver only)
 export const startTrip = async (req, res) => {
@@ -24,12 +26,20 @@ export const startTrip = async (req, res) => {
             });
         }
 
-        // Create new trip
+        const tripRouteId = routeId || bus.routeId;
+
+        // Get the first stage of the route (source city)
+        const firstStage = await Stage.findOne({ routeId: tripRouteId }).sort({ stageOrder: 1 });
+
+        // Create new trip with initial stage set to source
         const trip = await Trip.create({
             busId: bus._id,
-            routeId: routeId || bus.routeId,
+            routeId: tripRouteId,
             driverId: req.user._id,
-            status: 'in-progress'
+            status: 'in-progress',
+            currentStageId: firstStage?._id || null,
+            currentStageName: firstStage?.stageName || '',
+            currentStageCoords: firstStage ? { lat: firstStage.latitude, lng: firstStage.longitude } : { lat: null, lng: null }
         });
 
         // Update bus status
@@ -37,6 +47,22 @@ export const startTrip = async (req, res) => {
         bus.status = 'active';
         bus.currentTripId = trip._id;
         await bus.save();
+
+        // Emit stage update so TrackBus map shows stage immediately
+        if (firstStage) {
+            const io = getIO();
+            if (io) {
+                io.emit('bus:stage-updated', {
+                    tripId: trip._id,
+                    busId: bus._id,
+                    stageName: firstStage.stageName,
+                    stageOrder: firstStage.stageOrder,
+                    lat: firstStage.latitude,
+                    lng: firstStage.longitude,
+                    timestamp: new Date()
+                });
+            }
+        }
 
         const populatedTrip = await Trip.findById(trip._id)
             .populate('busId', 'busNumber')

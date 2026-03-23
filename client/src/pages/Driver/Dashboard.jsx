@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import ETMPanel from '../../components/ETM/ETMPanel';
 import { Play, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
@@ -15,6 +16,7 @@ const DriverDashboard = () => {
     const [delayReason, setDelayReason] = useState('');
     const [reportingDelay, setReportingDelay] = useState(false);
     const [busLoading, setBusLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('trip'); // 'trip' | 'etm'
 
     // FIX: keep a ref to myBus so startLocationSharing closure always has current value
     const myBusRef = useRef(null);
@@ -67,6 +69,7 @@ const DriverDashboard = () => {
 
             if (response.success) {
                 setCurrentTrip(response.data.trip);
+                setMyBus(prev => prev ? { ...prev, status: 'active', isOnTrip: true } : prev);
                 toast.success('Trip started!');
                 startLocationSharing(myBus);
 
@@ -93,6 +96,7 @@ const DriverDashboard = () => {
                 const tripId = currentTrip._id;
                 const busId = myBus?._id;
                 setCurrentTrip(null);
+                setMyBus(prev => prev ? { ...prev, status: 'inactive', isOnTrip: false } : prev);
                 stopLocationSharing();
                 setDelayMinutes('');
                 setDelayReason('');
@@ -180,10 +184,28 @@ const DriverDashboard = () => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 pt-20 px-4 pb-12">
             <div className="max-w-4xl mx-auto">
-                <div className="mb-8">
+                <div className="mb-6">
                     <h1 className="text-4xl font-bold text-white mb-2">Driver Dashboard</h1>
                     <p className="text-gray-300">Manage your trips and share live location</p>
                 </div>
+
+                {/* Tab switcher */}
+                <div className="flex gap-2 mb-6 bg-white/5 border border-white/10 rounded-xl p-1">
+                    {[['trip', 'Trip Control'], ['etm', 'ETM — Issue Tickets']].map(([id, label]) => (
+                        <button key={id} onClick={() => setActiveTab(id)}
+                            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === id ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            {label}
+                        </button>
+                    ))}
+                </div>
+
+                {/* ETM Tab */}
+                {activeTab === 'etm' && (
+                    <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
+                        <h2 className="text-2xl font-bold text-white mb-4">Electronic Ticket Machine</h2>
+                        <ETMPanel currentTrip={currentTrip} myBus={myBus} />
+                    </div>
+                )}
 
                 {/* Bus Info Card */}
                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
@@ -227,7 +249,8 @@ const DriverDashboard = () => {
                     )}
                 </div>
 
-                {/* Trip Control */}
+                {/* Trip Control — only shown on trip tab */}
+                {activeTab === 'trip' && (<>
                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
                     <h2 className="text-2xl font-bold text-white mb-4">Trip Control</h2>
 
@@ -317,6 +340,7 @@ const DriverDashboard = () => {
                         </form>
                     </div>
                 )}
+                </>)}
 
                 {/* Instructions */}
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6">

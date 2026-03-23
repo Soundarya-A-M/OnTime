@@ -32,6 +32,19 @@ const tripSchema = new mongoose.Schema({
     bookedSeats: [{
         type: Number
     }],
+    currentStageId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Stage',
+        default: null
+    },
+    currentStageName: {
+        type: String,
+        default: ''
+    },
+    currentStageCoords: {
+        lat: { type: Number, default: null },
+        lng: { type: Number, default: null }
+    },
     locationHistory: [{
         coordinates: {
             lat: Number,

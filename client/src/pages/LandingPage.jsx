@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Search, Calendar, Loader2, Bus, Zap, Shield } from 'lucide-react';
+import { MapPin, Clock, Search, Calendar, Loader2, Zap, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import api from '../config/api';
@@ -81,28 +81,17 @@ const LandingPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-            {/* Hero — FIX #4: CSS gradient instead of broken image references */}
+            {/* Hero — using bus-hero.jpeg from public folder */}
             <section className="relative pt-16">
-                <div className="relative w-full h-64 md:h-96 overflow-hidden bg-gradient-to-br from-slate-800 via-blue-900 to-purple-900">
-                    {/* Decorative background elements */}
-                    <div className="absolute inset-0 overflow-hidden">
-                        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
-                        <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl" />
-                        {/* Animated road lines */}
-                        <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/40 to-transparent" />
-                        <div className="absolute bottom-8 left-0 right-0 flex gap-8 justify-center opacity-20">
-                            {[...Array(8)].map((_, i) => (
-                                <div key={i} className="w-12 h-1.5 bg-white rounded-full" />
-                            ))}
-                        </div>
-                    </div>
+                <div className="relative w-full h-64 md:h-96 overflow-hidden">
+                    {/* Hero background image */}
+                    <img
+                        src="/bus-hero.jpeg"
+                        alt="Bus hero"
+                        className="absolute inset-0 w-full h-full object-cover"
+                    />
 
-                    {/* Hero bus icon */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                        <Bus className="w-64 h-64 text-white" />
-                    </div>
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
                     <div className="absolute bottom-8 left-0 right-0 text-center">
                         <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-lg">Where Is My Bus?</h1>
                         <p className="text-blue-300 mt-2 text-lg font-medium">Live GPS tracking across Karnataka</p>
@@ -118,12 +107,12 @@ const LandingPage = () => {
                         <p className="text-gray-300 text-center mb-8">Search live routes powered by real-time data</p>
 
                         <div className="flex flex-col md:flex-row gap-4 items-center justify-center mb-6">
-                            <input type="text" placeholder="From (city or stop)" value={fromPlace}
+                            <input type="text" placeholder="From" value={fromPlace}
                                 onChange={(e) => setFromPlace(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                             <span className="text-white text-2xl hidden md:block">→</span>
-                            <input type="text" placeholder="To (optional)" value={toPlace}
+                            <input type="text" placeholder="To" value={toPlace}
                                 onChange={(e) => setToPlace(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
