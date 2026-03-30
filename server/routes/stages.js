@@ -3,14 +3,16 @@ import {
     createStage,
     getStagesByRoute,
     updateStage,
-    deleteStage
+    deleteStage,
+    getUniqueStages
 } from '../controllers/stageController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/roleCheck.js';
 
 const router = express.Router();
 
-// Public - anyone can view stages for a route
+// Public - anyone can view stages globally or for a route
+router.get('/unique', getUniqueStages);
 router.get('/:routeId', getStagesByRoute);
 
 // Admin-only

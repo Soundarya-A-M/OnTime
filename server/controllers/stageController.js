@@ -130,3 +130,35 @@ export const deleteStage = async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to delete stage.' });
     }
 };
+
+// Get unique stage names globally
+export const getUniqueStages = async (req, res) => {
+    try {
+        const uniqueStages = await Stage.aggregate([
+            {
+                $group: {
+                    _id: "$stageName",
+                    latitude: { $first: "$latitude" },
+                    longitude: { $first: "$longitude" }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    stageName: "$_id",
+                    latitude: 1,
+                    longitude: 1
+                }
+            },
+            { $sort: { stageName: 1 } }
+        ]);
+
+        res.json({
+            success: true,
+            data: { stages: uniqueStages }
+        });
+    } catch (error) {
+        console.error('Get unique stages error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch unique stages.' });
+    }
+};

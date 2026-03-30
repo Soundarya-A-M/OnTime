@@ -5,7 +5,8 @@ import {
     getBusById,
     updateBus,
     assignDriver,
-    updateLocation
+    updateLocation,
+    searchBuses
 } from '../controllers/busController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin, requireDriver } from '../middleware/roleCheck.js';
@@ -13,6 +14,7 @@ import { requireAdmin, requireDriver } from '../middleware/roleCheck.js';
 const router = express.Router();
 
 // Public routes - anyone can view buses
+router.get('/search', searchBuses);
 router.get('/', getAllBuses);
 router.get('/:id', getBusById);
 

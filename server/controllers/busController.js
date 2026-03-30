@@ -1,5 +1,6 @@
 import Bus from '../models/Bus.js';
 import User from '../models/User.js';
+import Stage from '../models/Stage.js';
 
 // Create new bus (Admin only)
 export const createBus = async (req, res) => {
@@ -169,5 +170,133 @@ export const updateLocation = async (req, res) => {
     } catch (error) {
         console.error('Update location error:', error);
         res.status(500).json({ success: false, message: 'Failed to update location.' });
+    }
+};
+
+// Search buses (Direct & Partial matches)
+export const searchBuses = async (req, res) => {
+    try {
+        const { from, to, date } = req.query; // 'from' and 'to' are stageNames
+        
+        if (!from || !to) {
+            return res.status(400).json({ success: false, message: 'Please provide both from and to locations.' });
+        }
+
+        // Fetch Stage docs for 'from' and 'to' to get their coordinates
+        const fromStages = await Stage.find({ stageName: from }).populate('routeId', 'isActive');
+        const toStages = await Stage.find({ stageName: to }).populate('routeId', 'isActive');
+
+        if (fromStages.length === 0 || toStages.length === 0) {
+            return res.json({ success: true, data: { directBuses: [], partialBuses: [] } });
+        }
+
+        const directRouteIds = [];
+        const validPartialRoutes = [];
+
+        // Distinguish Direct vs Partial routes
+        // For Direct: route must have both From and To, and From.order < To.order
+        for (const fStage of fromStages) {
+            if (!fStage.routeId?.isActive) continue; // Skip inactive routes
+            const rId = fStage.routeId._id.toString();
+            const tStage = toStages.find(t => t.routeId?._id?.toString() === rId);
+            
+            if (tStage && fStage.stageOrder < tStage.stageOrder) {
+                directRouteIds.push(rId);
+            } else if (!tStage) {
+                // If it doesn't have the 'to' stage, it might be a partial route
+                validPartialRoutes.push(fStage);
+            }
+        }
+
+        // Get buses for Direct routes
+        const directBusesDocs = await Bus.find({ 
+            routeId: { $in: directRouteIds }, 
+            status: 'active' 
+        })
+        .populate('routeId')
+        .populate('driverId', 'name');
+
+        const directBuses = directBusesDocs.map(bus => {
+            return {
+                bus,
+                type: 'direct',
+                fromStage: fromStages.find(s => s.routeId?._id?.toString() === bus.routeId._id.toString()),
+                toStage: toStages.find(s => s.routeId?._id?.toString() === bus.routeId._id.toString())
+            };
+        });
+
+        // For partial routes
+        // Find the Stage on the route (after `from`) that is geographically closest to any `To` stage coordinate.
+        const partialBuses = [];
+        const toTargetCoords = { lat: toStages[0].latitude, lng: toStages[0].longitude };
+
+        // Haversine function
+        const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+            const R = 6371; // Radius of the earth in km
+            const dLat = (lat2 - lat1) * (Math.PI / 180);
+            const dLon = (lon2 - lon1) * (Math.PI / 180);
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+            return R * c; 
+        };
+
+        const fromToDistance = getDistanceFromLatLonInKm(fromStages[0].latitude, fromStages[0].longitude, toTargetCoords.lat, toTargetCoords.lng);
+
+        for (const fStage of validPartialRoutes) {
+            const rId = fStage.routeId._id;
+            // Get all stages for this route after the From stage
+            const subsequentStages = await Stage.find({ 
+                routeId: rId, 
+                stageOrder: { $gt: fStage.stageOrder } 
+            });
+
+            if (subsequentStages.length === 0) continue;
+
+            // Find the stop closest to the destination
+            let closestStage = null;
+            let minDistance = Infinity;
+
+            for (const s of subsequentStages) {
+                const dist = getDistanceFromLatLonInKm(s.latitude, s.longitude, toTargetCoords.lat, toTargetCoords.lng);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestStage = s;
+                }
+            }
+
+            // If the closest stage on this route is closer to the destination than the start point,
+            // we consider it a useful partial route. 
+            if (minDistance < fromToDistance) {
+                const pBuses = await Bus.find({ routeId: rId, status: 'active' })
+                    .populate('routeId')
+                    .populate('driverId', 'name');
+
+                pBuses.forEach(bus => {
+                    partialBuses.push({
+                        bus,
+                        type: 'partial',
+                        fromStage: fStage,
+                        toStage: closestStage, // They get off here
+                        destinationName: to,
+                        remainingDistanceKm: Math.round(minDistance * 10) / 10
+                    });
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                directBuses,
+                partialBuses
+            }
+        });
+
+    } catch (error) {
+        console.error('Search buses error:', error);
+        res.status(500).json({ success: false, message: 'Failed to search buses.' });
     }
 };

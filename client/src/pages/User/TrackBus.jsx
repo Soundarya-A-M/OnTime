@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin } from 'lucide-react';
+import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin, Search } from 'lucide-react';
 import L from 'leaflet';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -52,10 +52,16 @@ const TrackBus = () => {
     // FIX #9: mobile sidebar state
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isConnected, setIsConnected] = useState(socket.connected);
+    const [searchQuery, setSearchQuery] = useState('');
     const selectedBusRef = useRef(null);
     const stageLocations = useStageLocation(buses);
 
     useEffect(() => { selectedBusRef.current = selectedBus; }, [selectedBus]);
+
+    const filteredBuses = buses.filter(bus => 
+        bus.busNumber?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        bus.routeId?.routeName?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     const recalculateETA = useCallback((bus) => {
         if (!bus) { setEtaInfo(null); return; }
@@ -175,7 +181,22 @@ const TrackBus = () => {
                 )}
             </div>
 
-            <h2 className="text-xl font-bold text-white">Active Buses</h2>
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white">Active Buses</h2>
+                <span className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded-full">{filteredBuses.length}</span>
+            </div>
+
+            {/* Bus Search Input */}
+            <div className="relative mt-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                    type="text"
+                    placeholder="Search by bus number or route..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition"
+                />
+            </div>
 
             {/* ETA panel for selected bus */}
             {selectedBus && (
@@ -214,9 +235,13 @@ const TrackBus = () => {
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center text-gray-400 text-sm">
                     No active buses right now.
                 </div>
+            ) : filteredBuses.length === 0 ? (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center text-gray-400 text-sm">
+                    No buses match your search.
+                </div>
             ) : (
                 <div className="space-y-2">
-                    {buses.map(bus => (
+                    {filteredBuses.map(bus => (
                         <div key={bus._id} onClick={() => handleBusClick(bus)}
                             className={`bg-white/10 border rounded-lg p-3 cursor-pointer hover:bg-white/20 transition ${selectedBus?._id === bus._id ? 'border-purple-500 bg-white/15' : 'border-white/10'}`}>
                             <div className="flex items-start justify-between">
