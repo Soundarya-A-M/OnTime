@@ -40,9 +40,6 @@ const userSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster email lookups
-userSchema.index({ email: 1 });
-
 const User = mongoose.model('User', userSchema);
 
 export default User;

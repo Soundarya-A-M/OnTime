@@ -60,15 +60,13 @@ const busSchema = new mongoose.Schema({
     },
     busType: {
         type: String,
-        enum: ['Ordinary', 'Express', 'AC'],
+        trim: true,
         default: 'Ordinary'
     }
 }, {
     timestamps: true
 });
 
-// Index for faster bus number lookups
-busSchema.index({ busNumber: 1 });
 // Index for finding active buses
 busSchema.index({ status: 1, isOnTrip: 1 });
 

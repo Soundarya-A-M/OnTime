@@ -127,9 +127,19 @@ const TrackBus = () => {
             }
         });
 
+        // FIX: listen to trip start/end to refresh bus list dynamically
+        const handleTripStatusChange = () => {
+            fetchActiveBuses();
+        };
+
+        socket.on('trip:started', handleTripStatusChange);
+        socket.on('trip:ended', handleTripStatusChange);
+
         return () => {
             socket.off('bus:location-updated');
             socket.off('trip:delay');
+            socket.off('trip:started', handleTripStatusChange);
+            socket.off('trip:ended', handleTripStatusChange);
             socket.off('connect', handleConnect);
             socket.off('connect', handleReconnect);
             socket.off('disconnect', handleDisconnect);

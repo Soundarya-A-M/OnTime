@@ -68,17 +68,25 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// Connect to MongoDB
+// Connect to MongoDB with resilient settings
 mongoose.connect(process.env.MONGODB_URI, {
-    tls: true,
-    tlsAllowInvalidCertificates: true,
-    serverSelectionTimeoutMS: 5000
+    serverSelectionTimeoutMS: 30000,  // wait up to 30s to find a primary
+    socketTimeoutMS: 45000,           // close sockets after 45s of inactivity
+    connectTimeoutMS: 30000,          // initial connection timeout
+    maxPoolSize: 10,                  // maintain up to 10 socket connections
+    retryWrites: true,
+    retryReads: true
 })
     .then(() => console.log('✅ Connected to MongoDB'))
     .catch((error) => {
-        console.error('❌ MongoDB connection error:', error);
+        console.error('❌ MongoDB connection error:', error.message);
         process.exit(1);
     });
+
+// Log reconnection events cleanly (avoids wall of stack traces)
+mongoose.connection.on('disconnected', () => console.warn('⚠️  MongoDB disconnected — retrying...'));
+mongoose.connection.on('reconnected', () => console.log('✅ MongoDB reconnected'));
+mongoose.connection.on('error', (err) => console.error('MongoDB error:', err.message));
 
 // API Routes
 app.use('/api/auth', authRoutes);

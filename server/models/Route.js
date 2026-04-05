@@ -62,9 +62,6 @@ const routeSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster route number lookups
-routeSchema.index({ routeNumber: 1 });
-
 const Route = mongoose.model('Route', routeSchema);
 
 export default Route;

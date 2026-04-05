@@ -6,10 +6,17 @@ import { getIO } from '../socket/ioInstance.js';
 // Start a new trip (Driver only)
 export const startTrip = async (req, res) => {
     try {
-        const { routeId } = req.body;
+        const { routeId, busId } = req.body;
 
-        // Find bus assigned to this driver
-        const bus = await Bus.findOne({ driverId: req.user._id });
+        if (!busId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Bus ID is required to start a trip.'
+            });
+        }
+
+        // Find bus assigned to this driver that matches the requested busId
+        const bus = await Bus.findOne({ _id: busId, driverId: req.user._id });
 
         if (!bus) {
             return res.status(404).json({
@@ -191,6 +198,29 @@ export const getMyCurrentTrip = async (req, res) => {
         })
             .populate('busId', 'busNumber currentLocation')
             .populate('routeId', 'routeName routeNumber stops');
+
+        if (trip) {
+            // Validate the trip is genuinely active:
+            // Fetch the specific bus associated with this trip
+            const tripBus = await Bus.findById(trip.busId._id || trip.busId);
+            
+            const driverReassigned = !tripBus || tripBus.driverId?.toString() !== req.user._id.toString();
+            const busNotOnTrip = tripBus && !tripBus.isOnTrip;
+
+            if (driverReassigned || busNotOnTrip) {
+                // Stale trip — driver was reassigned or bus was reset externally
+                trip.status = 'completed';
+                trip.endTime = new Date();
+                await trip.save();
+                // Clean up bus if necessary
+                if (tripBus && busNotOnTrip) {
+                    await Bus.findByIdAndUpdate(tripBus._id, {
+                        isOnTrip: false, currentTripId: null
+                    });
+                }
+                return res.json({ success: true, data: { trip: null } });
+            }
+        }
 
         res.json({
             success: true,

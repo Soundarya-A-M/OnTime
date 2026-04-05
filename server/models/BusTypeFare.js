@@ -16,8 +16,6 @@ const busTypeFareSchema = new mongoose.Schema({
     timestamps: true
 });
 
-busTypeFareSchema.index({ busType: 1 });
-
 const BusTypeFare = mongoose.model('BusTypeFare', busTypeFareSchema);
 
 export default BusTypeFare;

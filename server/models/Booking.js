@@ -88,7 +88,6 @@ bookingSchema.pre('save', function (next) {
 });
 
 bookingSchema.index({ userId: 1, bookingDate: -1 });
-bookingSchema.index({ ticketId: 1 });
 
 const Booking = mongoose.model('Booking', bookingSchema);
 

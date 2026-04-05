@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ETMPanel from '../../components/ETM/ETMPanel';
-import { Play, Square, MapPin, Clock, AlertTriangle, Send } from 'lucide-react';
+import { Play, Square, MapPin, Clock, AlertTriangle, Send, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -17,6 +17,8 @@ const DriverDashboard = () => {
     const [reportingDelay, setReportingDelay] = useState(false);
     const [busLoading, setBusLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('trip'); // 'trip' | 'etm'
+    const [isReversed, setIsReversed] = useState(false);
+    const [routeStages, setRouteStages] = useState([]);
 
     // FIX: keep a ref to myBus so startLocationSharing closure always has current value
     const myBusRef = useRef(null);
@@ -35,6 +37,14 @@ const DriverDashboard = () => {
                 myBusRef.current = assignedBus || null;
                 // FIX: only fetch current trip AFTER we know the bus, passing it directly
                 await fetchCurrentTrip(assignedBus);
+                // Fetch stages for route direction display
+                const routeId = assignedBus?.routeId?._id || assignedBus?.routeId;
+                if (routeId) {
+                    try {
+                        const stagesRes = await api.get(`/stages/${routeId}`);
+                        if (stagesRes.success) setRouteStages(stagesRes.data.stages || []);
+                    } catch (_) {}
+                }
             }
         } catch (error) {
             toast.error('Failed to fetch bus info');
@@ -48,7 +58,10 @@ const DriverDashboard = () => {
         try {
             const response = await api.get('/trips/my-current');
             if (response.success && response.data.trip) {
-                setCurrentTrip(response.data.trip);
+                const trip = response.data.trip;
+
+                // Backend is now fully responsible for stale trip validation and cleanup.
+                setCurrentTrip(trip);
                 if (bus) startLocationSharing(bus);
             }
         } catch (error) {
@@ -64,7 +77,8 @@ const DriverDashboard = () => {
 
         try {
             const response = await api.post('/trips/start', {
-                routeId: myBus.routeId?._id
+                routeId: myBus.routeId?._id,
+                busId: myBus._id
             });
 
             if (response.success) {
@@ -209,7 +223,16 @@ const DriverDashboard = () => {
 
                 {/* Bus Info Card */}
                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
-                    <h2 className="text-2xl font-bold text-white mb-4">My Bus</h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-2xl font-bold text-white">My Bus</h2>
+                        <button
+                            onClick={() => { setBusLoading(true); fetchMyBus(); }}
+                            title="Refresh bus & trip data"
+                            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                        </button>
+                    </div>
                     {busLoading ? (
                         <div className="flex items-center gap-3 text-gray-400">
                             <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
@@ -253,6 +276,92 @@ const DriverDashboard = () => {
                 {activeTab === 'trip' && (<>
                 <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
                     <h2 className="text-2xl font-bold text-white mb-4">Trip Control</h2>
+
+                    {/* Route Direction Display */}
+                    {myBus?.routeId && routeStages.length > 0 && (
+                        <div className="mb-5 bg-white/5 border border-white/10 rounded-2xl p-4">
+                            {/* Source → Destination header */}
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className="flex flex-col items-center">
+                                        <span className="inline-block w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50"></span>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">From</p>
+                                        <p className="text-white font-bold text-sm truncate">
+                                            {isReversed
+                                                ? routeStages[routeStages.length - 1]?.stageName
+                                                : routeStages[0]?.stageName}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Swap Button */}
+                                <button
+                                    onClick={() => setIsReversed(v => !v)}
+                                    title="Swap direction (return journey)"
+                                    className="mx-3 flex-shrink-0 group flex flex-col items-center gap-0.5"
+                                >
+                                    <span className={`text-[11px] font-mono tracking-tighter transition-all duration-300 ${
+                                        isReversed ? 'text-blue-400' : 'text-purple-400'
+                                    }`}>
+                                        {isReversed ? '←————' : '————→'}
+                                    </span>
+                                    <div className={`p-1.5 rounded-full border transition-all duration-300 group-hover:scale-110 ${
+                                        isReversed
+                                            ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
+                                            : 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                    }`}>
+                                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                                    </div>
+                                    <span className={`text-[11px] font-mono tracking-tighter transition-all duration-300 ${
+                                        isReversed ? 'text-purple-400' : 'text-blue-400'
+                                    }`}>
+                                        {isReversed ? '————→' : '←————'}
+                                    </span>
+                                </button>
+
+                                <div className="flex items-center gap-3 flex-1 min-w-0 justify-end">
+                                    <div className="min-w-0 text-right">
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">To</p>
+                                        <p className="text-white font-bold text-sm truncate">
+                                            {isReversed
+                                                ? routeStages[0]?.stageName
+                                                : routeStages[routeStages.length - 1]?.stageName}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col items-center">
+                                        <span className="inline-block w-3 h-3 rounded-full bg-red-400 shadow-lg shadow-red-400/50"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Stage list */}
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">
+                                    {isReversed ? 'Return route' : 'Forward route'} — {routeStages.length} stops
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(isReversed ? [...routeStages].reverse() : routeStages).map((s, i, arr) => (
+                                        <div key={s._id} className="flex items-center gap-1">
+                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                                i === 0
+                                                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                                                    : i === arr.length - 1
+                                                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                                    : 'bg-white/5 text-gray-400 border border-white/10'
+                                            }`}>{s.stageName}</span>
+                                            {i < arr.length - 1 && (
+                                                <span className={`text-[10px] font-mono ${
+                                                    isReversed ? 'text-blue-500' : 'text-purple-500'
+                                                }`}>›</span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {currentTrip ? (
                         <div className="space-y-4">

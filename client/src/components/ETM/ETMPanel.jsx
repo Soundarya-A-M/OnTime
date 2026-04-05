@@ -16,16 +16,27 @@ const ETMPanel = ({ currentTrip, myBus }) => {
     const [currentStageName, setCurrentStageName] = useState('');
 
     useEffect(() => {
-        if (!currentTrip?.routeId?._id && !currentTrip?.routeId) return;
-        const routeId = currentTrip.routeId?._id || currentTrip.routeId;
+        // Always load stages from the BUS's current assigned route (not the trip's route)
+        // The trip's routeId can be stale if the bus was reassigned to a different route
+        const routeId = myBus?.routeId?._id || myBus?.routeId;
+        if (!routeId) return;
+
+        // Reset stage selections when route changes
+        setFromStage(null);
+        setToStage(null);
+        setFareInfo(null);
+
         api.get(`/stages/${routeId}`).then(res => {
             if (res.success) setStages(res.data.stages);
         });
-        api.get(`/trips/${currentTrip._id}/current-stage`).then(res => {
-            if (res.success && res.data.currentStageName)
-                setCurrentStageName(res.data.currentStageName);
-        });
-    }, [currentTrip]);
+
+        if (currentTrip?._id) {
+            api.get(`/trips/${currentTrip._id}/current-stage`).then(res => {
+                if (res.success && res.data.currentStageName)
+                    setCurrentStageName(res.data.currentStageName);
+            });
+        }
+    }, [currentTrip, myBus]);
 
     useEffect(() => {
         if (!fromStage || !toStage || !myBus?._id) return;
@@ -63,9 +74,32 @@ const ETMPanel = ({ currentTrip, myBus }) => {
     };
 
     if (!currentTrip) {
+        // No active trip — show read-only stage preview for the assigned route
+        if (!myBus?.routeId) {
+            return (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 text-amber-300 text-sm text-center">
+                    Start a trip first to use the ETM
+                </div>
+            );
+        }
         return (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 text-amber-300 text-sm text-center">
-                Start a trip first to use the ETM
+            <div className="space-y-4">
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-amber-300 text-sm">
+                    ⚠️ Start a trip to issue tickets. Showing stages for your assigned route.
+                </div>
+                {stages.length > 0 && (
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                        <p className="text-xs text-gray-400 mb-2">Stages on assigned route ({stages.length} stops)</p>
+                        <div className="space-y-1">
+                            {stages.map((s, i) => (
+                                <div key={s._id} className="flex items-center gap-2 text-sm">
+                                    <span className="text-gray-500 text-xs w-5">{i + 1}.</span>
+                                    <span className="text-white">{s.stageName}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

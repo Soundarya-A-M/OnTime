@@ -1,6 +1,7 @@
 import Bus from '../models/Bus.js';
 import User from '../models/User.js';
 import Stage from '../models/Stage.js';
+import Trip from '../models/Trip.js';
 
 // Create new bus (Admin only)
 export const createBus = async (req, res) => {
@@ -126,6 +127,26 @@ export const assignDriver = async (req, res) => {
                 message: 'Invalid driver ID or user is not a driver.'
             });
         }
+
+        // Clean up any stale in-progress trips for this driver from their old bus
+        const staleTrip = await Trip.findOne({ driverId, status: 'in-progress' });
+        if (staleTrip) {
+            staleTrip.status = 'completed';
+            staleTrip.endTime = new Date();
+            await staleTrip.save();
+            // Also clean up the old bus record
+            await Bus.findByIdAndUpdate(staleTrip.busId, {
+                isOnTrip: false,
+                status: 'inactive',
+                currentTripId: null
+            });
+        }
+        
+        // Remove driver from any other buses they were previously assigned to
+        await Bus.updateMany(
+            { driverId, _id: { $ne: req.params.id } },
+            { $set: { driverId: null } }
+        );
 
         const bus = await Bus.findByIdAndUpdate(
             req.params.id,

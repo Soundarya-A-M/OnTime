@@ -19,6 +19,7 @@ const AddBus = () => {
     // Data State
     const [routes, setRoutes] = useState([]);
     const [drivers, setDrivers] = useState([]);
+    const [busTypes, setBusTypes] = useState(['Ordinary', 'Express', 'AC']);
     const [searchDriver, setSearchDriver] = useState('');
     const [searchRoute, setSearchRoute] = useState('');
     const [selectedRoute, setSelectedRoute] = useState(null);
@@ -29,12 +30,23 @@ const AddBus = () => {
 
     const fetchInitialData = async () => {
         try {
-            const [routesRes, driversRes] = await Promise.all([
+            const [routesResult, driversResult, busTypesResult] = await Promise.allSettled([
                 api.get('/routes'),
-                api.get('/auth/users?role=driver')
+                api.get('/auth/users?role=driver'),
+                api.get('/bus-types')
             ]);
-            if (routesRes.success) setRoutes(routesRes.data.routes);
-            if (driversRes.success) setDrivers(driversRes.data.users);
+
+            if (routesResult.status === 'fulfilled' && routesResult.value.success) {
+                setRoutes(routesResult.value.data.routes);
+            }
+            if (driversResult.status === 'fulfilled' && driversResult.value.success) {
+                setDrivers(driversResult.value.data.users);
+            }
+            if (busTypesResult.status === 'fulfilled' && busTypesResult.value.success && busTypesResult.value.data.fares.length > 0) {
+                const uniqueTypes = [...new Set(busTypesResult.value.data.fares.map(f => f.busType))];
+                setBusTypes(uniqueTypes);
+                setBusType(uniqueTypes[0]);
+            }
         } catch (error) {
             toast.error('Failed to load initial data');
         }
@@ -137,9 +149,9 @@ const AddBus = () => {
                                     onChange={(e) => setBusType(e.target.value)}
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition appearance-none"
                                 >
-                                    <option value="Ordinary" className="bg-slate-800">Ordinary</option>
-                                    <option value="Express" className="bg-slate-800">Express</option>
-                                    <option value="AC" className="bg-slate-800">AC</option>
+                                    {busTypes.map(type => (
+                                        <option key={type} value={type} className="bg-slate-800">{type}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div>
