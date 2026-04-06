@@ -26,6 +26,21 @@ export const advanceStage = async (req, res) => {
         trip.currentStageId = stage._id;
         trip.currentStageName = stage.stageName;
         trip.currentStageCoords = { lat: stage.latitude, lng: stage.longitude };
+
+        // Process passenger drop-offs for this stage or missed earlier stages
+        let dropoffCount = 0;
+        trip.passengerDropoffs = trip.passengerDropoffs.filter(dropInfo => {
+            if (dropInfo.stageOrder <= stage.stageOrder) {
+                dropoffCount += dropInfo.count;
+                return false; // remove from list
+            }
+            return true; // keep
+        });
+
+        if (dropoffCount > 0) {
+            trip.currentPassengers = Math.max(0, (trip.currentPassengers || 0) - dropoffCount);
+        }
+
         await trip.save();
 
         const io = getIO();
@@ -37,11 +52,13 @@ export const advanceStage = async (req, res) => {
                 stageOrder: stage.stageOrder,
                 lat: stage.latitude,
                 lng: stage.longitude,
+                currentPassengers: trip.currentPassengers,
+                passengerDropoffs: trip.passengerDropoffs,
                 timestamp: new Date()
             });
         }
 
-        res.json({ success: true, data: { stageName: stage.stageName } });
+        res.json({ success: true, data: { stageName: stage.stageName, currentPassengers: trip.currentPassengers } });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Failed to advance stage.' });
@@ -87,6 +104,32 @@ export const issueETMTicket = async (req, res) => {
                     timestamp: new Date()
                 });
             }
+        }
+
+        // Add to active passengers & track drop-off
+        trip.currentPassengers = (trip.currentPassengers || 0) + 1;
+        
+        const dropoffIndex = trip.passengerDropoffs.findIndex(d => d.stageId.toString() === toStageId.toString());
+        if (dropoffIndex >= 0) {
+            trip.passengerDropoffs[dropoffIndex].count += 1;
+        } else {
+            trip.passengerDropoffs.push({
+                stageId: toStage._id,
+                stageName: toStage.stageName,
+                stageOrder: toStage.stageOrder,
+                count: 1
+            });
+        }
+        await trip.save();
+
+        const io = getIO();
+        if (io) {
+            io.emit('bus:passenger-updated', {
+                tripId: trip._id,
+                busId: trip.busId._id,
+                currentPassengers: trip.currentPassengers,
+                passengerDropoffs: trip.passengerDropoffs
+            });
         }
 
         const ticketId = `ETM${Date.now()}${Math.floor(Math.random() * 9000 + 1000)}`;

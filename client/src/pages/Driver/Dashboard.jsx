@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ETMPanel from '../../components/ETM/ETMPanel';
-import { Play, Square, MapPin, Clock, AlertTriangle, Send, RefreshCw, ArrowLeftRight } from 'lucide-react';
+import { Play, Square, MapPin, Clock, AlertTriangle, Send, RefreshCw, ArrowLeftRight, Users, Navigation } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -12,6 +12,7 @@ const DriverDashboard = () => {
     const [myBus, setMyBus] = useState(null);
     const [isSharing, setIsSharing] = useState(false);
     const [watchId, setWatchId] = useState(null);
+    const [trackingMode, setTrackingMode] = useState('manual');
     const [delayMinutes, setDelayMinutes] = useState('');
     const [delayReason, setDelayReason] = useState('');
     const [reportingDelay, setReportingDelay] = useState(false);
@@ -78,7 +79,8 @@ const DriverDashboard = () => {
         try {
             const response = await api.post('/trips/start', {
                 routeId: myBus.routeId?._id,
-                busId: myBus._id
+                busId: myBus._id,
+                trackingMode
             });
 
             if (response.success) {
@@ -120,6 +122,38 @@ const DriverDashboard = () => {
             }
         } catch (error) {
             toast.error(error.message || 'Failed to end trip');
+        }
+    };
+
+    const handleAdvanceStage = async () => {
+        if (!currentTrip || !myBus) return;
+        
+        try {
+            const currentIdx = routeStages.findIndex(s => s._id === currentTrip.currentStageId || s.stageName === currentTrip.currentStageName);
+            let nextStage = null;
+
+            if (currentIdx === -1) {
+                // If not found, assume first stage
+                nextStage = routeStages[0];
+            } else if (currentIdx < routeStages.length - 1) {
+                nextStage = routeStages[currentIdx + 1];
+            } else {
+                toast.success('Route completed');
+                return;
+            }
+
+            if (nextStage) {
+                const response = await api.post(`/trips/${currentTrip._id}/advance-stage`, {
+                    stageId: nextStage._id
+                });
+                
+                if (response.success) {
+                    toast.success(`Arrived at ${nextStage.stageName}`);
+                    await fetchCurrentTrip(myBus);
+                }
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to advance stage');
         }
     };
 
@@ -256,6 +290,16 @@ const DriverDashboard = () => {
                                 <span className="text-gray-300">Capacity:</span>
                                 <span className="text-white font-semibold">{myBus.capacity} seats</span>
                             </div>
+                            {currentTrip && (
+                                <div className="flex justify-between bg-black/20 p-2 rounded border border-white/5">
+                                    <span className="text-gray-300 flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-blue-400" /> Passengers:</span>
+                                    {currentTrip.currentPassengers > myBus.capacity ? (
+                                        <span className="text-red-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({currentTrip.currentPassengers - myBus.capacity} standing)</span></span>
+                                    ) : (
+                                        <span className="text-green-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({myBus.capacity - currentTrip.currentPassengers} available)</span></span>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex justify-between">
                                 <span className="text-gray-300">Status:</span>
                                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${
@@ -380,6 +424,16 @@ const DriverDashboard = () => {
                                 </div>
                             )}
 
+                            {currentTrip.trackingMode === 'manual' && (
+                                <button
+                                    onClick={handleAdvanceStage}
+                                    className="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-indigo-600 transition flex items-center justify-center space-x-2"
+                                >
+                                    <MapPin className="w-5 h-5" />
+                                    <span>Arrived at Next Stage</span>
+                                </button>
+                            )}
+
                             <button
                                 onClick={endTrip}
                                 className="w-full py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-medium hover:from-red-600 hover:to-pink-600 transition flex items-center justify-center space-x-2"
@@ -391,6 +445,28 @@ const DriverDashboard = () => {
                     ) : (
                         <div className="space-y-4">
                             <p className="text-gray-400">No active trip</p>
+                            
+                            <div className="bg-black/20 border border-white/5 p-4 rounded-xl">
+                                <label className="block text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+                                    <Navigation className="w-4 h-4 text-purple-400" />
+                                    Stage Tracking Mode
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button 
+                                        onClick={() => setTrackingMode('manual')}
+                                        className={`py-2 px-3 rounded-lg text-sm font-medium transition ${trackingMode === 'manual' ? 'bg-purple-500/30 text-purple-200 border border-purple-500/50' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}
+                                    >
+                                        Manual (Driver Panel)
+                                    </button>
+                                    <button 
+                                        onClick={() => setTrackingMode('gps')}
+                                        className={`py-2 px-3 rounded-lg text-sm font-medium transition ${trackingMode === 'gps' ? 'bg-blue-500/30 text-blue-200 border border-blue-500/50' : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10'}`}
+                                    >
+                                        Auto (GPS Based)
+                                    </button>
+                                </div>
+                            </div>
+                            
                             <button
                                 onClick={startTrip}
                                 disabled={!myBus || busLoading}

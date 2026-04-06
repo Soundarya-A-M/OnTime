@@ -56,6 +56,72 @@ export const setupTrackingHandlers = (io) => {
                     }
                 });
 
+                // Auto-advance Stage Tracking if GPS Mode is active
+                if (bus.isOnTrip && bus.currentTripId) {
+                    const trip = await Trip.findById(bus.currentTripId).populate('routeId');
+                    if (trip && trip.trackingMode === 'gps' && trip.routeId?.stops?.length > 0) {
+                        const routeStages = trip.routeId.stops;
+                        // Determine current stage index based on id or name
+                        let currentIdx = routeStages.findIndex(s => s.stageName === trip.currentStageName);
+                        if (currentIdx === -1) currentIdx = 0; // Default if not found
+
+                        // Only proceed if not at the very last stage
+                        if (currentIdx < routeStages.length - 1) {
+                            const nextStage = routeStages[currentIdx + 1];
+                            const nextLat = nextStage.coordinates?.lat || nextStage.latitude;
+                            const nextLng = nextStage.coordinates?.lng || nextStage.longitude;
+
+                            if (nextLat && nextLng) {
+                                // Haversine formula for distance in meters
+                                const R = 6371000; 
+                                const dLat = (nextLat - lat) * Math.PI / 180;
+                                const dLng = (nextLng - lng) * Math.PI / 180;
+                                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                                          Math.cos(lat * Math.PI / 180) * Math.cos(nextLat * Math.PI / 180) *
+                                          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                                const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+                                // If bus is within 300 meters of the next stage
+                                if (distance <= 300) {
+                                    trip.currentStageId = nextStage._id;
+                                    trip.currentStageName = nextStage.stageName;
+                                    trip.currentStageCoords = { lat: nextLat, lng: nextLng };
+
+                                    // Process drop-offs
+                                    let dropoffCount = 0;
+                                    trip.passengerDropoffs = trip.passengerDropoffs.filter(dropInfo => {
+                                        // Assume index as stageOrder for fallback
+                                        if (dropInfo.stageName === nextStage.stageName || dropInfo.stageOrder <= (currentIdx + 1)) {
+                                            dropoffCount += dropInfo.count;
+                                            return false;
+                                        }
+                                        return true;
+                                    });
+
+                                    if (dropoffCount > 0) {
+                                        trip.currentPassengers = Math.max(0, (trip.currentPassengers || 0) - dropoffCount);
+                                    }
+
+                                    await trip.save();
+
+                                    io.emit('bus:stage-updated', {
+                                        tripId: trip._id,
+                                        busId: trip.busId,
+                                        stageName: nextStage.stageName,
+                                        stageOrder: currentIdx + 1,
+                                        lat: nextLat,
+                                        lng: nextLng,
+                                        currentPassengers: trip.currentPassengers,
+                                        passengerDropoffs: trip.passengerDropoffs,
+                                        timestamp: new Date()
+                                    });
+                                    console.log(`[Auto-Advance] Bus ${bus.busNumber} arrived at ${nextStage.stageName}`);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 console.log(`Location updated for bus ${bus.busNumber}: ${lat}, ${lng}`);
             } catch (error) {
                 console.error('Location update error:', error);

@@ -59,6 +59,7 @@ export const getAllBuses = async (req, res) => {
         const buses = await Bus.find(filter)
             .populate('routeId', 'routeName routeNumber polyline sourceCoordinates destinationCoordinates stops')
             .populate('driverId', 'name email phone')
+            .populate('currentTripId', 'currentPassengers passengerDropoffs trackingMode delayMinutes delayReason')
             .sort({ busNumber: 1 });
 
         res.json({

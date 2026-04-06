@@ -66,7 +66,37 @@ const tripSchema = new mongoose.Schema({
     delayReason: {
         type: String,
         default: ''
-    }
+    },
+    currentPassengers: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
+    trackingMode: {
+        type: String,
+        enum: ['manual', 'gps'],
+        default: 'manual'
+    },
+    passengerDropoffs: [{
+        stageId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Stage',
+            required: true
+        },
+        stageName: {
+            type: String,
+            required: true
+        },
+        stageOrder: {
+            type: Number,
+            required: true
+        },
+        count: {
+            type: Number,
+            default: 0,
+            min: 0
+        }
+    }]
 }, {
     timestamps: true
 });

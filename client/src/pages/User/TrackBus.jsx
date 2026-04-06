@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin, Search } from 'lucide-react';
+import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin, Search, Users } from 'lucide-react';
 import L from 'leaflet';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -134,12 +134,16 @@ const TrackBus = () => {
 
         socket.on('trip:started', handleTripStatusChange);
         socket.on('trip:ended', handleTripStatusChange);
+        socket.on('bus:stage-updated', handleTripStatusChange);
+        socket.on('bus:passenger-updated', handleTripStatusChange);
 
         return () => {
             socket.off('bus:location-updated');
             socket.off('trip:delay');
             socket.off('trip:started', handleTripStatusChange);
             socket.off('trip:ended', handleTripStatusChange);
+            socket.off('bus:stage-updated', handleTripStatusChange);
+            socket.off('bus:passenger-updated', handleTripStatusChange);
             socket.off('connect', handleConnect);
             socket.off('connect', handleReconnect);
             socket.off('disconnect', handleDisconnect);
@@ -280,9 +284,21 @@ const TrackBus = () => {
                                         </div>
                                     )}
                                 </div>
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}`}>
-                                    {bus.status}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-medium flex-shrink-0 mb-1 ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'}`}>
+                                        {bus.status}
+                                    </span>
+                                    {bus.status === 'active' && bus.currentTripId && (
+                                        <div className="text-[10px] text-right mt-1 font-semibold flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded border border-white/5">
+                                            <Users className="w-2.5 h-2.5 text-blue-400" />
+                                            {bus.currentTripId.currentPassengers > bus.capacity ? (
+                                                <span className="text-red-400">{bus.currentTripId.currentPassengers}/{bus.capacity} (Stand: {bus.currentTripId.currentPassengers - bus.capacity})</span>
+                                            ) : (
+                                                <span className="text-green-400">{bus.currentTripId.currentPassengers}/{bus.capacity} (Avail: {bus.capacity - bus.currentTripId.currentPassengers})</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             {selectedBus?._id === bus._id && etaInfo && (
                                 <div className="mt-2 pt-2 border-t border-white/10 flex gap-3 text-xs">
@@ -400,6 +416,59 @@ const TrackBus = () => {
                                 {!selectedBus.currentLocation?.coordinates?.lat && (
                                     <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs">
                                         ⚠️ No live location. Driver hasn't started a trip yet.
+                                    </div>
+                                )}
+                                
+                                {selectedBus.status === 'active' && selectedBus.currentTripId && (
+                                    <div className="mt-3 pt-3 border-t border-white/10">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-1.5 text-blue-400">
+                                                <Users className="w-4 h-4" />
+                                                <span className="font-semibold text-xs tracking-wide">PASSENGER STATUS</span>
+                                            </div>
+                                            {selectedBus.currentTripId.currentPassengers > selectedBus.capacity ? (
+                                                <span className="bg-red-500/20 text-red-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Over Capacity</span>
+                                            ) : (
+                                                <span className="bg-green-500/20 text-green-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Available</span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                            <div className="bg-black/30 rounded p-2 text-center border border-white/5">
+                                                <div className="text-xl font-bold text-white leading-none mb-0.5">{selectedBus.currentTripId.currentPassengers || 0}<span className="text-sm text-gray-500">/{selectedBus.capacity}</span></div>
+                                                <div className="text-[9px] text-gray-400 uppercase tracking-widest">Occupied</div>
+                                            </div>
+                                            <div className="bg-black/30 rounded p-2 text-center border border-white/5">
+                                                {selectedBus.currentTripId.currentPassengers > selectedBus.capacity ? (
+                                                    <>
+                                                        <div className="text-xl font-bold text-red-400 leading-none mb-0.5">{selectedBus.currentTripId.currentPassengers - selectedBus.capacity}</div>
+                                                        <div className="text-[9px] text-red-400/70 uppercase tracking-widest">Standing</div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="text-xl font-bold text-green-400 leading-none mb-0.5">{selectedBus.capacity - (selectedBus.currentTripId.currentPassengers || 0)}</div>
+                                                        <div className="text-[9px] text-green-400/70 uppercase tracking-widest">Seats Free</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {selectedBus.currentTripId.passengerDropoffs?.length > 0 && (
+                                            <div className="mt-2 bg-black/20 rounded p-2 border border-white/5">
+                                                <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                    <span>Upcoming Drop-offs</span>
+                                                    <span className="bg-purple-500/20 text-purple-300 px-1 rounded-sm">{selectedBus.currentTripId.passengerDropoffs.length} stages</span>
+                                                </p>
+                                                <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar pr-1">
+                                                    {selectedBus.currentTripId.passengerDropoffs.map((drop, idx) => (
+                                                        <div key={idx} className="flex justify-between items-center text-xs border-b border-white/5 last:border-0 pb-1 last:pb-0">
+                                                            <span className="text-gray-300 truncate pr-2 flex items-center gap-1.5 font-medium"><MapPin className="w-3 h-3 text-red-400/70 shrink-0" /> {drop.stageName}</span>
+                                                            <span className="font-bold text-red-300 shrink-0">-{drop.count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 {stageLocations[selectedBus._id] && (

@@ -6,7 +6,7 @@ import { getIO } from '../socket/ioInstance.js';
 // Start a new trip (Driver only)
 export const startTrip = async (req, res) => {
     try {
-        const { routeId, busId } = req.body;
+        const { routeId, busId, trackingMode } = req.body;
 
         if (!busId) {
             return res.status(400).json({
@@ -44,6 +44,7 @@ export const startTrip = async (req, res) => {
             routeId: tripRouteId,
             driverId: req.user._id,
             status: 'in-progress',
+            trackingMode: trackingMode === 'gps' ? 'gps' : 'manual',
             currentStageId: firstStage?._id || null,
             currentStageName: firstStage?.stageName || '',
             currentStageCoords: firstStage ? { lat: firstStage.latitude, lng: firstStage.longitude } : { lat: null, lng: null }
