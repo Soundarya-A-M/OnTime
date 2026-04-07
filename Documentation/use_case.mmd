@@ -1,0 +1,50 @@
+flowchart LR
+    %% Defining actors to resemble standard Use Case stick figures
+    Admin(("👤 Admin"))
+    User(("👤 User\n(Passenger)"))
+    Crew(("👤 Crew\n(Driver/Conductor)"))
+
+    %% System Boundary defining the extent of the OnTime application
+    subgraph OnTime["OnTime Bus Tracking System"]
+        direction TB
+        
+        %% General
+        Login(["Login / Register"])
+        
+        %% Admin Actions
+        ManageBuses(["Manage Buses & Routes"])
+        AssignTrips(["Assign Trips & Schedules"])
+        SystemReports(["View System Reports"])
+        
+        %% Crew Actions
+        SelectTrip(["Select Current Trip"])
+        IssueTickets(["Issue ETM Tickets"])
+        UpdateStage(["Update Stage / Capacity"])
+        
+        %% User Actions
+        SearchBus(["Search Bus / Route"])
+        TrackBus(["Track Bus in Real-time"])
+        ViewCapacity(["View Seat Availability"])
+    end
+
+    %% Mapping Actions to Admin
+    Admin ---> Login
+    Admin ---> ManageBuses
+    Admin ---> AssignTrips
+    Admin ---> SystemReports
+
+    %% Mapping Actions to Crew
+    Crew ---> Login
+    Crew ---> SelectTrip
+    Crew ---> IssueTickets
+    Crew ---> UpdateStage
+
+    %% Mapping Actions to User
+    User ---> Login
+    User ---> SearchBus
+    User ---> TrackBus
+    User ---> ViewCapacity
+
+    %% Adding standard UML associations
+    IssueTickets -. "«includes»" .-> UpdateStage
+    TrackBus -. "«extends»" .-> SearchBus

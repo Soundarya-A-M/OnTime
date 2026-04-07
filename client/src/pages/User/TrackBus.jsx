@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin, Search, Users } from 'lucide-react';
+import { Bus, Navigation, Clock, Zap, Menu, X, WifiOff, MapPin, Search, Users, LayoutGrid } from 'lucide-react';
 import L from 'leaflet';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -10,6 +10,7 @@ import DelayBanner from '../../components/Notifications/DelayBanner';
 import { calculateETA } from '../../utils/etaCalculator';
 import { useStageLocation } from '../../hooks/useStageLocation';
 import StageBusMarker from '../../components/Map/StageBusMarker';
+import SeatLayout from '../../components/Seats/SeatLayout';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -53,6 +54,7 @@ const TrackBus = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [isConnected, setIsConnected] = useState(socket.connected);
     const [searchQuery, setSearchQuery] = useState('');
+    const [busSeats, setBusSeats] = useState({}); // { [busId]: { bookedSeats, totalSeats } }
     const selectedBusRef = useRef(null);
     const stageLocations = useStageLocation(buses);
 
@@ -135,7 +137,11 @@ const TrackBus = () => {
         socket.on('trip:started', handleTripStatusChange);
         socket.on('trip:ended', handleTripStatusChange);
         socket.on('bus:stage-updated', handleTripStatusChange);
-        socket.on('bus:passenger-updated', handleTripStatusChange);
+        socket.on('bus:passenger-updated', () => {
+            fetchActiveBuses();
+            // Refresh seats for currently selected bus
+            if (selectedBusRef.current) fetchBusSeats(selectedBusRef.current);
+        });
 
         return () => {
             socket.off('bus:location-updated');
@@ -158,6 +164,30 @@ const TrackBus = () => {
         finally { setLoading(false); }
     };
 
+    // Fetch booked seats for a bus that has an active trip
+    const fetchBusSeats = useCallback(async (bus) => {
+        const tripId = bus?.currentTripId?._id || bus?.currentTripId;
+        if (!tripId) {
+            setBusSeats(prev => ({ ...prev, [bus._id]: null }));
+            return;
+        }
+        try {
+            const res = await api.get(`/bookings/seats/${tripId}`);
+            if (res.success) {
+                setBusSeats(prev => ({
+                    ...prev,
+                    [bus._id]: {
+                        bookedSeats: res.data.bookedSeats || [],
+                        totalSeats: res.data.totalSeats || bus.capacity || 47
+                    }
+                }));
+            }
+        } catch {
+            // Seat data unavailable (no active trip / unauthenticated)
+            setBusSeats(prev => ({ ...prev, [bus._id]: null }));
+        }
+    }, []);
+
     const handleBusClick = (bus) => {
         setSelectedBus(bus);
         setDelayInfo(null);
@@ -177,6 +207,7 @@ const TrackBus = () => {
         }
 
         recalculateETA(bus);
+        fetchBusSeats(bus); // load seat data for this bus
     };
 
     const formatSpeed = (speed) => {
@@ -401,7 +432,7 @@ const TrackBus = () => {
 
                     {/* Bus details overlay */}
                     {selectedBus && (
-                        <div className="absolute top-4 right-4 bg-slate-900/95 backdrop-blur-xl border-2 border-purple-500/50 rounded-2xl p-5 max-w-xs z-10 shadow-2xl">
+                        <div className="absolute top-4 right-4 bg-slate-900/95 backdrop-blur-xl border-2 border-purple-500/50 rounded-2xl p-5 max-w-xs z-10 shadow-2xl" style={{ maxHeight: 'calc(100vh - 7rem)', overflowY: 'auto' }}>
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-lg font-bold text-white">Bus Details</h3>
                                 <button onClick={() => { setSelectedBus(null); setEtaInfo(null); setRouteCoordinates([]); }}
@@ -471,6 +502,36 @@ const TrackBus = () => {
                                         )}
                                     </div>
                                 )}
+
+                                {/* Seat Layout Section */}
+                                {selectedBus.status === 'active' && selectedBus.currentTripId && (() => {
+                                    const seatData = busSeats[selectedBus._id];
+                                    return (
+                                        <div className="mt-3 pt-3 border-t border-white/10">
+                                            <div className="flex items-center gap-1.5 mb-3">
+                                                <LayoutGrid className="w-4 h-4 text-indigo-400" />
+                                                <span className="text-indigo-300 font-semibold text-xs uppercase tracking-wide">Seat Layout</span>
+                                                {seatData && (
+                                                    <span className="ml-auto text-[10px] text-gray-500">
+                                                        {seatData.bookedSeats.length} reserved · {seatData.totalSeats - seatData.bookedSeats.length} free
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {!seatData ? (
+                                                <div className="text-gray-500 text-xs py-2">Loading seat data...</div>
+                                            ) : (
+                                                <div className="bg-black/30 rounded-xl p-3 border border-white/5">
+                                                    <SeatLayout
+                                                        capacity={seatData.totalSeats || selectedBus.capacity || 47}
+                                                        reservedSeats={seatData.bookedSeats}
+                                                        compact
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
                                 {stageLocations[selectedBus._id] && (
                                     <div className="mt-2 pt-2 border-t border-white/10">
                                         <div className="text-xs text-gray-400">Last confirmed stage</div>

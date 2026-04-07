@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OnTime – Activity Diagram (Mermaid)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 20px 48px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+      letter-spacing: 0.3px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 28px;
+    }
+
+    .diagram-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+      padding: 36px 32px 28px;
+      width: 100%;
+      max-width: 1200px;
+      overflow-x: auto;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+
+    .caption {
+      text-align: center;
+      font-weight: 600;
+      font-size: 14px;
+      color: #444;
+      margin-top: 22px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Mermaid subgraph label override – inject via CSS variables */
+    .diagram-card svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .download-btn {
+      margin-top: 20px;
+      padding: 10px 24px;
+      background: #4a90d9;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .download-btn:hover { background: #2c6fad; }
+  </style>
+</head>
+<body>
+
+  <h1>OnTime – Activity Diagram</h1>
+  <p class="subtitle">System activity flow across Admin, Crew, User, and Admin (System) roles</p>
+
+  <div class="diagram-card">
+    <div class="mermaid">
+---
+config:
+  theme: default
+  look: classic
+---
+flowchart LR
+    Start(["●"]) --> Login
+
+    subgraph Admin["  Admin  "]
+        direction TB
+        Login(["Login"])
+        LoginCheck{"Login\nSuccess?"}
+        AdminDash["Admin\nDashboard"]
+        ManageBuses["Manage Buses\n& Routes"]
+        AssignTrips["Assign Trips\n& Schedules"]
+        CrewMgmt["Crew\nManagement"]
+        ManageStages["Manage\nStages"]
+        ViewSystemReports["View System\nReports"]
+        BusTypeFare["Bus Type\nFare Mgmt"]
+
+        Login --> LoginCheck
+        LoginCheck -- "Login Failed" --> Login
+        LoginCheck -- "Success" --> AdminDash
+        AdminDash --> ManageBuses & CrewMgmt
+        ManageBuses --> AssignTrips
+        CrewMgmt --> ManageStages
+        AssignTrips --> ViewSystemReports
+        ManageStages --> BusTypeFare
+    end
+
+    subgraph Crew["  Crew (Driver)  "]
+        direction TB
+        CrewDash["Crew\nDashboard"]
+        ViewAssigned["View Assigned\nBus & Route"]
+        StartTrip["Start Trip"]
+        IssueETM["Issue ETM\nTickets"]
+        AdvanceStage["Advance\nCurrent Stage"]
+        ViewPassCount["View Passenger\nCount"]
+        ReportDelay["Report\nDelay"]
+        EndTrip["End Trip"]
+
+        CrewDash --> ViewAssigned --> StartTrip --> IssueETM
+        IssueETM --> AdvanceStage --> ViewPassCount --> ReportDelay --> EndTrip
+    end
+
+    subgraph User["  User (Passenger)  "]
+        direction TB
+        UserDash["User\nDashboard"]
+        ViewRoutes["View Bus\nRoutes"]
+        TrackBus["Track Bus\nReal-time"]
+        ViewSeat["View Seat\nAvailability"]
+        CalcFare["Calculate Fare"]
+        ViewDelay["View Delay\nNotifications"]
+        ViewTripHistory["View Trip\nHistory"]
+
+        UserDash --> ViewRoutes
+        ViewRoutes --> TrackBus & ViewSeat
+        TrackBus --> CalcFare
+        ViewSeat --> CalcFare
+        CalcFare --> ViewDelay --> ViewTripHistory
+    end
+
+    subgraph AdminSys["  Admin (System)  "]
+        direction TB
+        AdminSysDash["Admin\nDashboard"]
+        RouteMgmt["Route\nManagement"]
+        StageMgmt["Stage\nManagement"]
+        AddEditBuses["Add / Edit\nBuses"]
+        ManageBusFares["Manage Bus\nType Fares"]
+        SysCrewMgmt["Crew\nManagement"]
+        ViewTripHistorySys["View Trip\nHistory"]
+        SystemReports["System\nReports"]
+
+        AdminSysDash --> RouteMgmt & StageMgmt
+        RouteMgmt --> AddEditBuses
+        StageMgmt --> AddEditBuses
+        AddEditBuses --> ManageBusFares --> SysCrewMgmt --> ViewTripHistorySys --> SystemReports
+    end
+
+    Logout(["Logout"]) --> End(["⬤"])
+
+    LoginCheck -- "Success\n(Crew)" --> CrewDash
+    LoginCheck -- "Success\n(User)" --> UserDash
+    LoginCheck -- "Success\n(Admin Sys)" --> AdminSysDash
+
+    ViewSystemReports --> Logout
+    BusTypeFare --> Logout
+    EndTrip --> Logout
+    ViewTripHistory --> Logout
+    SystemReports --> Logout
+
+    classDef action fill:#e05c5c,color:#fff,stroke:#b03030,rx:8,ry:8
+    classDef decision fill:#f1c40f,color:#000,stroke:#b8960c
+    classDef blueTerminal fill:#4a90d9,color:#fff,stroke:#2c6fad
+    classDef startDot fill:#1a1a2e,color:#fff,stroke:#000
+    classDef endDot fill:#fff,color:#000,stroke:#000
+
+    class LoginCheck decision
+    class Login,Logout blueTerminal
+    class AdminDash,ManageBuses,AssignTrips,CrewMgmt,ManageStages,ViewSystemReports,BusTypeFare action
+    class CrewDash,ViewAssigned,StartTrip,IssueETM,AdvanceStage,ViewPassCount,ReportDelay,EndTrip action
+    class UserDash,ViewRoutes,TrackBus,ViewSeat,CalcFare,ViewDelay,ViewTripHistory action
+    class AdminSysDash,RouteMgmt,StageMgmt,AddEditBuses,ManageBusFares,SysCrewMgmt,ViewTripHistorySys,SystemReports action
+    class Start startDot
+    class End endDot
+    </div>
+
+    <p class="caption">Fig: Activity Diagram – OnTime Bus Tracking System</p>
+  </div>
+
+  <button class="download-btn" onclick="downloadSVG()">⬇ Download SVG</button>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      flowchart: {
+        htmlLabels: true,
+        curve: 'basis',
+        padding: 20,
+        nodeSpacing: 40,
+        rankSpacing: 60,
+        diagramPadding: 20
+      },
+      themeVariables: {
+        primaryColor: '#e05c5c',
+        primaryTextColor: '#fff',
+        primaryBorderColor: '#b03030',
+        lineColor: '#333',
+        secondaryColor: '#4a90d9',
+        tertiaryColor: '#f1c40f',
+        background: '#fff',
+        mainBkg: '#e05c5c',
+        nodeBorder: '#b03030',
+        clusterBkg: '#f7f8fa',
+        clusterBorder: '#ccc',
+        titleColor: '#1a1a2e',
+        edgeLabelBackground: '#fff',
+        fontFamily: 'Inter, Arial, sans-serif',
+        fontSize: '13px'
+      }
+    });
+
+    function downloadSVG() {
+      const svg = document.querySelector('.mermaid svg');
+      if (!svg) { alert('Diagram not ready yet.'); return; }
+      const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'OnTime_Activity_Diagram.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

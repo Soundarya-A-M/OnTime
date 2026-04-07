@@ -171,3 +171,82 @@ export const getAvailableSeats = async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to fetch available seats.' });
     }
 };
+
+// Get all confirmed reservations for a trip (driver view)
+export const getTripReservations = async (req, res) => {
+    try {
+        const { tripId } = req.params;
+
+        const trip = await Trip.findById(tripId).populate('busId', 'capacity');
+        if (!trip) return res.status(404).json({ success: false, message: 'Trip not found.' });
+
+        // Only the driver of this trip or an admin may view passenger details
+        const isAdmin = req.user.role === 'admin';
+        const isDriver = trip.driverId?.toString() === req.user._id.toString();
+        if (!isAdmin && !isDriver) {
+            return res.status(403).json({ success: false, message: 'Access denied.' });
+        }
+
+        // Broad date window that covers:
+        //  • Timezone differences (IST bookings stored as UTC)
+        //  • Trips that started the day before
+        //  • Advance bookings made for future dates
+        const windowStart = new Date(trip.startTime || trip.createdAt);
+        windowStart.setDate(windowStart.getDate() - 1); // 1 day before trip start
+        windowStart.setHours(0, 0, 0, 0);
+        const windowEnd = new Date();
+        windowEnd.setDate(windowEnd.getDate() + 2);     // 2 days from now
+        windowEnd.setHours(23, 59, 59, 999);
+
+        // Match bookings explicitly linked to this tripId  OR  bookings for the
+        // same bus within the generous date window (catches bookings where tripId
+        // was null because the trip hadn't started yet when the user booked)
+        const bookings = await Booking.find({
+            $or: [
+                { tripId },
+                {
+                    busId: trip.busId?._id || trip.busId,
+                    travelDate: { $gte: windowStart, $lte: windowEnd }
+                }
+            ],
+            status: { $ne: 'cancelled' }
+        })
+            .populate('userId', 'name email')
+            .sort({ createdAt: 1 });
+
+        // Deduplicate (a booking matching both clauses would appear twice)
+        const seen = new Set();
+        const uniqueBookings = bookings.filter(b => {
+            const id = b._id.toString();
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+
+        const totalSeats = trip.busId?.capacity || 47;
+
+        // Build the reserved seat set from trip.bookedSeats AND from booking seatNumbers
+        // so the map is accurate even for bookings that have no tripId
+        const reservedSeatSet = new Set(trip.bookedSeats || []);
+        for (const b of uniqueBookings) {
+            const seats = b.seatNumbers?.length > 0 ? b.seatNumbers : b.seatNumber ? [b.seatNumber] : [];
+            seats.forEach(s => reservedSeatSet.add(s));
+        }
+        const reservedSeats = Array.from(reservedSeatSet).sort((a, b) => a - b);
+
+        res.json({
+            success: true,
+            data: {
+                bookings: uniqueBookings,
+                totalSeats,
+                reservedSeats,
+                reservedCount: reservedSeats.length,
+                freeCount: Math.max(0, totalSeats - reservedSeats.length)
+            }
+        });
+    } catch (error) {
+        console.error('Get trip reservations error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch reservations.' });
+    }
+};
+

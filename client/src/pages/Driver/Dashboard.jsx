@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import ETMPanel from '../../components/ETM/ETMPanel';
-import { Play, Square, MapPin, Clock, AlertTriangle, Send, RefreshCw, ArrowLeftRight, Users, Navigation } from 'lucide-react';
+import SeatLayout from '../../components/Seats/SeatLayout';
+import { Play, Square, MapPin, Clock, AlertTriangle, Send, RefreshCw, ArrowLeftRight, Users, Navigation, Ticket, PhoneCall, UserCheck } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import socket from '../../config/socket';
 import api from '../../config/api';
@@ -17,9 +18,11 @@ const DriverDashboard = () => {
     const [delayReason, setDelayReason] = useState('');
     const [reportingDelay, setReportingDelay] = useState(false);
     const [busLoading, setBusLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('trip'); // 'trip' | 'etm'
+    const [activeTab, setActiveTab] = useState('trip'); // 'trip' | 'etm' | 'reserved'
     const [isReversed, setIsReversed] = useState(false);
     const [routeStages, setRouteStages] = useState([]);
+    const [reservations, setReservations] = useState(null); // null = not loaded yet
+    const [reservationsLoading, setReservationsLoading] = useState(false);
 
     // FIX: keep a ref to myBus so startLocationSharing closure always has current value
     const myBusRef = useRef(null);
@@ -29,23 +32,73 @@ const DriverDashboard = () => {
         fetchMyBus();
     }, []);
 
+    // Fetch reservations whenever the Reserved tab is opened or currentTrip changes
+    useEffect(() => {
+        if (activeTab === 'reserved' && currentTrip) {
+            fetchReservations(currentTrip._id);
+        }
+    }, [activeTab, currentTrip]);
+
+    const fetchReservations = async (tripId) => {
+        setReservationsLoading(true);
+        try {
+            const res = await api.get(`/bookings/trip/${tripId}/reserved`);
+            if (res.success) setReservations(res.data);
+        } catch (err) {
+            toast.error('Failed to load reservations');
+        } finally {
+            setReservationsLoading(false);
+        }
+    };
+
     const fetchMyBus = async () => {
         try {
-            const response = await api.get('/buses');
-            if (response.success) {
-                const assignedBus = response.data.buses.find(b => b.driverId?._id === user.id);
-                setMyBus(assignedBus || null);
-                myBusRef.current = assignedBus || null;
-                // FIX: only fetch current trip AFTER we know the bus, passing it directly
-                await fetchCurrentTrip(assignedBus);
-                // Fetch stages for route direction display
-                const routeId = assignedBus?.routeId?._id || assignedBus?.routeId;
-                if (routeId) {
-                    try {
-                        const stagesRes = await api.get(`/stages/${routeId}`);
-                        if (stagesRes.success) setRouteStages(stagesRes.data.stages || []);
-                    } catch (_) {}
-                }
+            // Fetch buses AND current trip in parallel so we can reconcile them
+            const [busRes, tripRes] = await Promise.all([
+                api.get('/buses'),
+                api.get('/trips/my-current').catch(() => ({ success: false }))
+            ]);
+
+            if (!busRes.success) {
+                toast.error('Failed to fetch bus info');
+                return;
+            }
+
+            // All buses assigned to this driver
+            const driverBuses = (busRes.data.buses || []).filter(
+                b => b.driverId?._id === user.id || b.driverId === user.id
+            );
+
+            let assignedBus = null;
+            let activeTrip = null;
+
+            if (tripRes.success && tripRes.data?.trip) {
+                activeTrip = tripRes.data.trip;
+                // Find the bus that owns this active trip (handles multiple assigned buses)
+                const tripBusId = (activeTrip.busId?._id || activeTrip.busId)?.toString();
+                assignedBus = driverBuses.find(b => b._id?.toString() === tripBusId) || null;
+            }
+
+            // Fallback: use first assigned bus when there is no active trip
+            if (!assignedBus) {
+                assignedBus = driverBuses[0] || null;
+            }
+
+            setMyBus(assignedBus);
+            myBusRef.current = assignedBus;
+
+            if (activeTrip && assignedBus) {
+                setCurrentTrip(activeTrip);
+                startLocationSharing(assignedBus);
+            }
+
+            // Fetch route stages for the correct bus
+            const routeId = assignedBus?.routeId?._id || assignedBus?.routeId;
+            if (routeId) {
+                try {
+                    const stagesRes = await api.get(`/stages/${routeId}`);
+                    if (stagesRes.success) setRouteStages(stagesRes.data.stages || []);
+                } catch (_) {}
             }
         } catch (error) {
             toast.error('Failed to fetch bus info');
@@ -54,14 +107,12 @@ const DriverDashboard = () => {
         }
     };
 
-    // FIX: accept bus as param so we don't depend on state timing
+    // Used by handleAdvanceStage and startTrip/endTrip to re-sync state
     const fetchCurrentTrip = async (bus) => {
         try {
             const response = await api.get('/trips/my-current');
             if (response.success && response.data.trip) {
                 const trip = response.data.trip;
-
-                // Backend is now fully responsible for stale trip validation and cleanup.
                 setCurrentTrip(trip);
                 if (bus) startLocationSharing(bus);
             }
@@ -238,10 +289,14 @@ const DriverDashboard = () => {
                 </div>
 
                 {/* Tab switcher */}
-                <div className="flex gap-2 mb-6 bg-white/5 border border-white/10 rounded-xl p-1">
-                    {[['trip', 'Trip Control'], ['etm', 'ETM — Issue Tickets']].map(([id, label]) => (
+                <div className="flex gap-1 mb-6 bg-white/5 border border-white/10 rounded-xl p-1">
+                    {[
+                        ['trip', 'Trip Control'],
+                        ['etm', 'ETM — Issue Tickets'],
+                        ['reserved', 'Reserved Seats'],
+                    ].map(([id, label]) => (
                         <button key={id} onClick={() => setActiveTab(id)}
-                            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${activeTab === id ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            className={`flex-1 py-2.5 rounded-lg text-xs font-semibold transition ${activeTab === id ? 'bg-purple-500 text-white' : 'text-gray-400 hover:text-white'}`}>
                             {label}
                         </button>
                     ))}
@@ -252,6 +307,119 @@ const DriverDashboard = () => {
                     <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
                         <h2 className="text-2xl font-bold text-white mb-4">Electronic Ticket Machine</h2>
                         <ETMPanel currentTrip={currentTrip} myBus={myBus} />
+                    </div>
+                )}
+
+                {/* Reserved Seats Tab */}
+                {activeTab === 'reserved' && (
+                    <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-2">
+                                <div className="w-9 h-9 bg-indigo-500/20 rounded-xl flex items-center justify-center">
+                                    <Ticket className="w-5 h-5 text-indigo-400" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-white leading-none">Reserved Seats</h2>
+                                    <p className="text-gray-400 text-xs mt-0.5">Online bookings for this trip</p>
+                                </div>
+                            </div>
+                            {currentTrip && (
+                                <button
+                                    onClick={() => fetchReservations(currentTrip._id)}
+                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
+                                    title="Refresh"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+
+                        {!currentTrip ? (
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-amber-300 text-sm">
+                                ⚠️ Start a trip first to view reserved seats.
+                            </div>
+                        ) : reservationsLoading ? (
+                            <div className="flex items-center gap-3 text-gray-400 py-6 justify-center">
+                                <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                                Loading reservations...
+                            </div>
+                        ) : reservations ? (
+                            <>
+                                {/* Summary chips */}
+                                <div className="flex gap-3 mb-5 flex-wrap">
+                                    <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 px-3 py-1.5 rounded-lg">
+                                        <span className="text-indigo-300 font-bold text-lg leading-none">{reservations.reservedCount}</span>
+                                        <span className="text-gray-400 text-xs">Reserved</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-3 py-1.5 rounded-lg">
+                                        <span className="text-green-300 font-bold text-lg leading-none">{reservations.freeCount}</span>
+                                        <span className="text-gray-400 text-xs">Free</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg">
+                                        <span className="text-white font-bold text-lg leading-none">{reservations.totalSeats}</span>
+                                        <span className="text-gray-400 text-xs">Total Seats</span>
+                                    </div>
+                                </div>
+
+                                {/* Seat layout */}
+                                <div className="bg-black/30 rounded-xl p-4 mb-5 border border-white/5">
+                                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">Seat Map</p>
+                                    <SeatLayout
+                                        capacity={myBus?.capacity || reservations.totalSeats}
+                                        reservedSeats={reservations.reservedSeats}
+                                        compact
+                                    />
+                                </div>
+
+                                {/* Passenger list */}
+                                {reservations.bookings.length === 0 ? (
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-5 text-center">
+                                        <Ticket className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                                        <p className="text-gray-400 text-sm">No online bookings yet for this trip.</p>
+                                        <p className="text-gray-500 text-xs mt-1">ETM tickets are tracked separately.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <p className="text-xs text-gray-500 uppercase tracking-widest">Passenger List ({reservations.bookings.length})</p>
+                                        {reservations.bookings.map((b) => (
+                                            <div key={b._id} className="bg-black/30 border border-white/10 rounded-xl p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <UserCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                                            <span className="text-white font-semibold text-sm truncate">
+                                                                {b.passengerDetails?.name || b.userId?.name || 'Passenger'}
+                                                            </span>
+                                                        </div>
+                                                        {b.passengerDetails?.phone && (
+                                                            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
+                                                                <PhoneCall className="w-3 h-3" />
+                                                                {b.passengerDetails.phone}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex items-center gap-1.5 text-xs">
+                                                            <span className="text-green-400 font-medium">{b.fromStop || '—'}</span>
+                                                            <span className="text-gray-600">→</span>
+                                                            <span className="text-red-400 font-medium">{b.toStop || '—'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="shrink-0 text-right">
+                                                        <div className="flex flex-wrap gap-1 justify-end">
+                                                            {(b.seatNumbers?.length > 0 ? b.seatNumbers : [b.seatNumber]).map(s => (
+                                                                <span key={s} className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold px-2 py-0.5 rounded">
+                                                                    #{s}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <div className="text-green-300 text-xs font-semibold mt-1">₹{b.amount}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        ) : null}
                     </div>
                 )}
 

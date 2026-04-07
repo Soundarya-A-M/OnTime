@@ -4,9 +4,11 @@ import {
     getMyBookings,
     getBookingById,
     cancelBooking,
-    getAvailableSeats
+    getAvailableSeats,
+    getTripReservations
 } from '../controllers/bookingController.js';
 import { authenticate } from '../middleware/auth.js';
+import { requireDriver } from '../middleware/roleCheck.js';
 
 const router = express.Router();
 
@@ -14,9 +16,11 @@ const router = express.Router();
 router.post('/', authenticate, createBooking);
 router.get('/my', authenticate, getMyBookings);
 
-// FIX: was /seats/:tripId — client calls /bookings/seats/:tripId so this must match
-// Also add authenticate so seat data isn't publicly scraped
+// Available seats for a trip (used by BookTicket seat picker)
 router.get('/seats/:tripId', authenticate, getAvailableSeats);
+
+// All reservations for a trip — driver or admin only (used by Driver Dashboard Reserved tab)
+router.get('/trip/:tripId/reserved', authenticate, requireDriver, getTripReservations);
 
 router.get('/:id', authenticate, getBookingById);
 router.put('/:id/cancel', authenticate, cancelBooking);

@@ -1,0 +1,139 @@
+---
+config:
+  theme: default
+  look: classic
+---
+flowchart TD
+    Start(["●"]) --> Login
+
+    %% ═══════════════════════════════════════
+    %%  LANE 1 – Admin (Auth + Management)
+    %% ═══════════════════════════════════════
+    subgraph Admin["Admin"]
+        direction TB
+        Login(["Login"])
+        LoginCheck{"Login\nSuccess?"}
+        AdminDash["Admin\nDashboard"]
+        ManageBuses["Manage Buses\n& Routes"]
+        AssignTrips["Assign Trips\n& Schedules"]
+        CrewMgmt["Crew\nManagement"]
+        ManageStages["Manage\nStages"]
+        ViewSystemReports["View System\nReports"]
+        BusTypeFare["Bus Type\nFare Mgmt"]
+    end
+
+    %% ═══════════════════════════════════════
+    %%  LANE 2 – Crew (Driver)
+    %% ═══════════════════════════════════════
+    subgraph Crew["Crew (Driver)"]
+        direction TB
+        CrewDash["Crew\nDashboard"]
+        ViewAssigned["View Assigned\nBus & Route"]
+        StartTrip["Start Trip"]
+        IssueETM["Issue ETM\nTickets"]
+        AdvanceStage["Advance\nCurrent Stage"]
+        ViewPassCount["View Passenger\nCount"]
+        ReportDelay["Report\nDelay"]
+        EndTrip["End Trip"]
+    end
+
+    %% ═══════════════════════════════════════
+    %%  LANE 3 – User (Passenger)
+    %% ═══════════════════════════════════════
+    subgraph User["User (Passenger)"]
+        direction TB
+        UserDash["User\nDashboard"]
+        ViewRoutes["View Bus\nRoutes"]
+        TrackBus["Track Bus\nReal-time"]
+        ViewSeat["View Seat\nAvailability"]
+        CalcFare["Calculate Fare"]
+        ViewDelay["View Delay\nNotifications"]
+        ViewTripHistory["View Trip\nHistory"]
+    end
+
+    %% ═══════════════════════════════════════
+    %%  LANE 4 – Admin (System)
+    %% ═══════════════════════════════════════
+    subgraph AdminSys["Admin (System)"]
+        direction TB
+        AdminSysDash["Admin\nDashboard"]
+        RouteMgmt["Route\nManagement"]
+        StageMgmt["Stage\nManagement"]
+        AddEditBuses["Add / Edit\nBuses"]
+        ManageBusFares["Manage Bus\nType Fares"]
+        SysCrewMgmt["Crew\nManagement"]
+        ViewTripHistorySys["View Trip\nHistory"]
+        SystemReports["System\nReports"]
+    end
+
+    Logout(["Logout"]) --> End(["⬤"])
+
+    %% ═══════════════════════════════════════
+    %%  FLOWS
+    %% ═══════════════════════════════════════
+
+    %% Auth Flow
+    Login --> LoginCheck
+    LoginCheck -- "[ Login Failed ]" --> Login
+    LoginCheck -- "[ Success ]" --> AdminDash
+
+    %% Admin Management Flow
+    AdminDash --> ManageBuses
+    AdminDash --> CrewMgmt
+    ManageBuses --> AssignTrips
+    CrewMgmt --> ManageStages
+    AssignTrips --> ViewSystemReports
+    ManageStages --> BusTypeFare
+    ViewSystemReports --> Logout
+    BusTypeFare --> Logout
+
+    %% Crew Flow
+    LoginCheck -- "[ Success (Crew) ]" --> CrewDash
+    CrewDash --> ViewAssigned
+    ViewAssigned --> StartTrip
+    StartTrip --> IssueETM
+    IssueETM --> AdvanceStage
+    AdvanceStage --> ViewPassCount
+    ViewPassCount --> ReportDelay
+    ReportDelay --> EndTrip
+    EndTrip --> Logout
+
+    %% User Flow
+    LoginCheck -- "[ Success (User) ]" --> UserDash
+    UserDash --> ViewRoutes
+    ViewRoutes --> TrackBus
+    ViewRoutes --> ViewSeat
+    TrackBus --> CalcFare
+    ViewSeat --> CalcFare
+    CalcFare --> ViewDelay
+    ViewDelay --> ViewTripHistory
+    ViewTripHistory --> Logout
+
+    %% Admin System Flow
+    LoginCheck -- "[ Success (Admin Sys) ]" --> AdminSysDash
+    AdminSysDash --> RouteMgmt
+    AdminSysDash --> StageMgmt
+    RouteMgmt --> AddEditBuses
+    StageMgmt --> AddEditBuses
+    AddEditBuses --> ManageBusFares
+    ManageBusFares --> SysCrewMgmt
+    SysCrewMgmt --> ViewTripHistorySys
+    ViewTripHistorySys --> SystemReports
+    SystemReports --> Logout
+
+    %% ═══════════════════════════════════════
+    %%  STYLING
+    %% ═══════════════════════════════════════
+    classDef action fill:#e05c5c,color:#fff,stroke:#b03030,rx:8,ry:8
+    classDef decision fill:#f1c40f,color:#000,stroke:#b8960c
+    classDef terminal fill:#4a90d9,color:#fff,stroke:#2c6fad,rx:20,ry:20
+    classDef startNode fill:#000,color:#fff,stroke:#000,rx:50,ry:50
+
+    class Login terminal
+    class LoginCheck decision
+    class AdminDash,ManageBuses,AssignTrips,CrewMgmt,ManageStages,ViewSystemReports,BusTypeFare action
+    class CrewDash,ViewAssigned,StartTrip,IssueETM,AdvanceStage,ViewPassCount,ReportDelay,EndTrip action
+    class UserDash,ViewRoutes,TrackBus,ViewSeat,CalcFare,ViewDelay,ViewTripHistory action
+    class AdminSysDash,RouteMgmt,StageMgmt,AddEditBuses,ManageBusFares,SysCrewMgmt,ViewTripHistorySys,SystemReports action
+    class Logout terminal
+    class Start startNode

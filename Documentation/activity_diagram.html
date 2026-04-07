@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>OnTime – Activity Diagram</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 12px;
+      background: #fff;
+      color: #000;
+    }
+
+    .page {
+      padding: 20px 24px 28px;
+      width: 960px;
+      margin: 0 auto;
+    }
+
+    /* ═══════════════════════════════════
+       OUTER FRAME  (border wraps everything)
+    ═══════════════════════════════════ */
+    .diagram-frame {
+      border: 2px solid #444;
+    }
+
+    /* ─── Header row with lane titles ─── */
+    .header-row {
+      display: flex;
+      border-bottom: 2px solid #444;
+    }
+    .header-row .col-header {
+      text-align: center;
+      font-weight: bold;
+      font-size: 12.5px;
+      padding: 6px 4px;
+      border-right: 2px solid #444;
+    }
+    .header-row .col-header:last-child { border-right: none; }
+
+    /* column widths */
+    .w-auth   { width: 190px; min-width: 190px; }
+    .w-crew   { flex: 1; }
+    .w-user   { flex: 1; }
+    .w-admin  { flex: 1; }
+
+    /* ─── Content row ─── */
+    .content-row {
+      display: flex;
+      align-items: stretch;
+    }
+
+    .lane {
+      border-right: 2px solid #444;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 18px 10px 22px;
+      gap: 0;
+    }
+    .lane:last-child { border-right: none; }
+
+    /* ─── Bottom logout bar ─── */
+    .logout-row {
+      border-top: 2px solid #444;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 14px 20px;
+      gap: 10px;
+    }
+
+    /* ═══════════════
+       SHAPE STYLES
+    ═══════════════ */
+
+    /* filled start dot */
+    .dot-start {
+      width: 18px; height: 18px;
+      background: #000;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* bull's-eye end */
+    .dot-end {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      border: 3px solid #000;
+      display: flex; align-items: center; justify-content: center;
+      background: #fff;
+      flex-shrink: 0;
+    }
+    .dot-end-inner { width: 9px; height: 9px; background: #000; border-radius: 50%; }
+
+    /* activity box */
+    .box {
+      border-radius: 8px;
+      text-align: center;
+      padding: 5px 7px;
+      font-size: 10.5px;
+      font-weight: bold;
+      line-height: 1.35;
+      flex-shrink: 0;
+    }
+    .box-red  { background: #e05c5c; color: #fff; border: 1.5px solid #b03030; }
+    .box-blue { background: #4a90d9; color: #fff; border: 1.5px solid #2c6fad; border-radius: 18px; }
+
+    .w120 { width: 120px; }
+    .w108 { width: 108px; }
+    .w96  { width: 96px;  }
+
+    /* diamond */
+    .diamond-outer {
+      width: 76px; height: 76px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .diamond-inner {
+      width: 56px; height: 56px;
+      background: #f1c40f;
+      border: 2px solid #b8960c;
+      transform: rotate(45deg);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .diamond-text {
+      transform: rotate(-45deg);
+      font-size: 9px;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    /* dashed badge */
+    .badge {
+      border: 1.5px dashed #555;
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 9.5px;
+      font-weight: bold;
+      line-height: 1.2;
+      text-align: center;
+      color: #000;
+    }
+
+    /* vertical arrow */
+    .arr {
+      width: 2px;
+      background: #333;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .arr::after {
+      content: '';
+      position: absolute;
+      bottom: -6px; left: 50%;
+      transform: translateX(-50%);
+      border-left: 4.5px solid transparent;
+      border-right: 4.5px solid transparent;
+      border-top: 6px solid #333;
+    }
+
+    /* horizontal arrow (for logout → end) */
+    .arr-h {
+      height: 2px;
+      background: #333;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .arr-h::after {
+      content: '';
+      position: absolute;
+      right: -6px; top: 50%;
+      transform: translateY(-50%);
+      border-top: 4.5px solid transparent;
+      border-bottom: 4.5px solid transparent;
+      border-left: 6px solid #333;
+    }
+
+    /* dashed horizontal arrow */
+    .arr-dashed {
+      height: 2px;
+      flex-shrink: 0;
+      border-top: 2px dashed #555;
+      background: transparent;
+      position: relative;
+    }
+    .arr-dashed::after {
+      content: '';
+      position: absolute;
+      right: -6px; top: 50%;
+      transform: translateY(-50%) rotate(0deg);
+      border-top: 4.5px solid transparent;
+      border-bottom: 4.5px solid transparent;
+      border-left: 6px solid #555;
+    }
+
+    /* small label */
+    .lbl {
+      font-size: 9.5px;
+      color: #444;
+      text-align: center;
+      white-space: nowrap;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    /* helpers */
+    .row { display: flex; align-items: flex-start; justify-content: center; gap: 8px; }
+    .col { display: flex; flex-direction: column; align-items: center; }
+
+    .s4  { height: 4px;  flex-shrink: 0; }
+    .s8  { height: 8px;  flex-shrink: 0; }
+    .s12 { height: 12px; flex-shrink: 0; }
+    .s16 { height: 16px; flex-shrink: 0; }
+    .s20 { height: 20px; flex-shrink: 0; }
+    .s28 { height: 28px; flex-shrink: 0; }
+    .s36 { height: 36px; flex-shrink: 0; }
+    .s48 { height: 48px; flex-shrink: 0; }
+
+    /* caption */
+    .caption {
+      text-align: center;
+      font-weight: bold;
+      font-size: 13px;
+      margin-top: 14px;
+      letter-spacing: 0.2px;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+<div class="diagram-frame">
+
+  <!-- ══════════ COLUMN HEADERS ══════════ -->
+  <div class="header-row">
+    <div class="col-header w-auth">Admin</div>
+    <div class="col-header w-crew">Crew (Driver)</div>
+    <div class="col-header w-user">User (Passenger)</div>
+    <div class="col-header w-admin">Admin (System)</div>
+  </div>
+
+  <!-- ══════════ MAIN CONTENT ROW ══════════ -->
+  <div class="content-row">
+
+    <!-- ██████ AUTH COLUMN ██████ -->
+    <div class="lane w-auth">
+
+      <!-- start dot -->
+      <div class="dot-start"></div>
+      <div class="arr" style="height:16px;"></div>
+
+      <!-- Login row with dashed badge -->
+      <div class="row" style="align-items:center; width:100%;">
+        <div class="box box-blue w96">Login</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">
+          <div class="badge">login for<br>others</div>
+          <div class="arr-dashed" style="width:28px; margin-top:2px;"></div>
+        </div>
+      </div>
+
+      <!-- [ Login ] label -->
+      <div class="s4"></div>
+      <div class="lbl">[ Login ]</div>
+      <div class="arr" style="height:12px;"></div>
+
+      <!-- Diamond -->
+      <div class="diamond-outer">
+        <div class="diamond-inner">
+          <div class="diamond-text">Login<br>success?</div>
+        </div>
+      </div>
+
+      <!-- Failed label (left side; we simulate with text alignment) -->
+      <div style="display:flex;width:100%;align-items:center;gap:4px;padding-left:2px;">
+        <div class="lbl" style="font-size:9px;">[ Login failed ]</div>
+        <div style="flex:1;height:2px;background:#333;border-top:1.5px dashed #555;margin-top:0;"></div>
+      </div>
+
+      <!-- Success label -->
+      <div class="lbl" style="align-self:flex-end;padding-right:8px;">[ Success ]</div>
+      <div class="arr" style="height:12px;"></div>
+
+      <!-- Admin Dashboard -->
+      <div class="box box-red w120">Admin<br>Dashboard</div>
+      <div class="arr" style="height:16px;"></div>
+
+      <!-- 2×2 grid of admin actions -->
+      <div class="row" style="width:100%;">
+        <div class="col">
+          <div class="box box-red w96" style="font-size:9.5px;">Manage Buses<br>&amp; Routes</div>
+          <div class="arr" style="height:12px;"></div>
+          <div class="box box-red w96" style="font-size:9.5px;">Assign Trips<br>&amp; Schedules</div>
+        </div>
+        <div class="col">
+          <div class="box box-red w96" style="font-size:9.5px;">Crew<br>Management</div>
+          <div class="arr" style="height:12px;"></div>
+          <div class="box box-red w96" style="font-size:9.5px;">Manage<br>Stages</div>
+        </div>
+      </div>
+      <div class="arr" style="height:16px;"></div>
+
+      <!-- Bottom two admin actions -->
+      <div class="row" style="width:100%;">
+        <div class="box box-red w96" style="font-size:9.5px;">View System<br>Reports</div>
+        <div class="box box-red w96" style="font-size:9.5px;">Bus Type<br>Fare Mgmt</div>
+      </div>
+
+      <!-- padding to stretch to logout -->
+      <div style="flex:1;"></div>
+    </div>
+
+    <!-- ██████ CREW LANE ██████ -->
+    <div class="lane w-crew">
+      <div class="box box-red w120">Crew<br>Dashboard</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Assigned<br>Bus &amp; Route</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Start Trip</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Issue ETM<br>Tickets</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Advance<br>Current Stage</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Passenger<br>Count</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Report<br>Delay</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">End Trip</div>
+
+      <div style="flex:1;"></div>
+    </div>
+
+    <!-- ██████ USER LANE ██████ -->
+    <div class="lane w-user">
+      <div class="box box-red w120">User<br>Dashboard</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Bus<br>Routes</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <!-- two side-by-side -->
+      <div class="row" style="width:100%;">
+        <div class="box box-red w108" style="font-size:9.5px;">Track Bus<br>Real-time</div>
+        <div class="box box-red w108" style="font-size:9.5px;">View Seat<br>Availability</div>
+      </div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Calculate Fare</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Delay<br>Notifications</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Trip<br>History</div>
+
+      <div style="flex:1;"></div>
+    </div>
+
+    <!-- ██████ ADMIN (SYSTEM) LANE ██████ -->
+    <div class="lane w-admin">
+      <div class="box box-red w120">Admin<br>Dashboard</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <!-- two side-by-side -->
+      <div class="row" style="width:100%;">
+        <div class="box box-red w108" style="font-size:9.5px;">Route<br>Management</div>
+        <div class="box box-red w108" style="font-size:9.5px;">Stage<br>Management</div>
+      </div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Add / Edit<br>Buses</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Manage Bus<br>Type Fares</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">Crew<br>Management</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">View Trip<br>History</div>
+      <div class="arr" style="height:20px;"></div>
+
+      <div class="box box-red w120">System<br>Reports</div>
+
+      <div style="flex:1;"></div>
+    </div>
+
+  </div><!-- /content-row -->
+
+  <!-- ══════════ LOGOUT BAR ══════════ -->
+  <div class="logout-row">
+    <div class="box box-blue" style="width:90px;">Logout</div>
+    <div class="arr-h" style="width:40px;"></div>
+    <div class="dot-end"><div class="dot-end-inner"></div></div>
+  </div>
+
+</div><!-- /diagram-frame -->
+
+<div class="caption">Fig: Activity Diagram</div>
+</div><!-- /page -->
+</body>
+</html>

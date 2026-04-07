@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OnTime Activity Diagram</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 12px; background: #ffffff; }
+  .diagram-wrapper { padding: 20px; }
+  h2 { text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 16px; font-family: Arial, sans-serif; }
+  
+  .swimlane-container {
+    display: flex;
+    border: 2px solid #333;
+    width: 100%;
+  }
+
+  .lane {
+    flex: 1;
+    border-right: 2px solid #333;
+    display: flex;
+    flex-direction: column;
+  }
+  .lane:last-child { border-right: none; }
+
+  .lane-header {
+    background: #f0f0f0;
+    border-bottom: 2px solid #333;
+    text-align: center;
+    font-weight: bold;
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+
+  .lane-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    gap: 0;
+    min-height: 600px;
+    position: relative;
+  }
+
+  /* ── shared box styles ── */
+  .node {
+    width: 130px;
+    text-align: center;
+    padding: 7px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    line-height: 1.3;
+    position: relative;
+    z-index: 2;
+  }
+  .node-red    { background: #e05c5c; color: #fff; border: 1.5px solid #a93226; }
+  .node-blue   { background: #2980b9; color: #fff; border: 1.5px solid #1a5270; border-radius: 20px; }
+  .node-yellow { background: #f1c40f; color: #000; border: 1.5px solid #d4ac0d; transform: rotate(0deg); }
+  .node-dark   { background: #2c3e50; color: #fff; border: 1.5px solid #1a252f; border-radius: 20px; }
+  .node-diamond {
+    width: 100px;
+    height: 50px;
+    background: #f1c40f;
+    border: 1.5px solid #d4ac0d;
+    transform: rotate(45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 4px auto;
+  }
+  .node-diamond span {
+    transform: rotate(-45deg);
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  /* vertical arrow spacer */
+  .arrow-down {
+    width: 2px;
+    background: #333;
+    height: 24px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .arrow-down::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #333;
+  }
+
+  /* start/end circles */
+  .start-circle {
+    width: 22px; height: 22px;
+    background: #000;
+    border-radius: 50%;
+    margin: 0 auto;
+  }
+  .end-circle {
+    width: 22px; height: 22px;
+    border: 4px solid #000;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 0 0 4px #000;
+    margin: 0 auto;
+  }
+  .end-circle-inner {
+    width: 12px; height: 12px;
+    background: #000;
+    border-radius: 50%;
+    margin: 1px auto;
+  }
+
+  /* label on arrow */
+  .arrow-label {
+    font-size: 9px;
+    color: #555;
+    text-align: center;
+    margin: 1px 0;
+    font-style: italic;
+  }
+
+  .spacer { height: 12px; }
+  .spacer-lg { height: 36px; }
+
+  /* cross-lane visual note */
+  .cross-note {
+    font-size: 9px;
+    color: #888;
+    font-style: italic;
+    text-align: center;
+    margin: 2px 0 4px;
+  }
+</style>
+</head>
+<body>
+<div class="diagram-wrapper">
+  <h2>Fig: Activity Diagram – OnTime Bus Tracking System</h2>
+
+  <!-- ── TOP ROW: Start + Login (span across) ── -->
+  <div style="display:flex; justify-content:center; align-items:center; flex-direction:column; margin-bottom:0; padding: 10px 0;">
+    <div class="start-circle"></div>
+    <div class="arrow-down" style="height:16px;"></div>
+    <div class="node node-blue" style="width:100px;">Login</div>
+    <div style="display:flex; gap:8px; align-items:flex-start; margin-top:4px;">
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div class="arrow-label">Login Failed</div>
+        <div style="width:60px;height:2px;background:#333;"></div>
+      </div>
+      <div class="node-diamond"><span>Login<br>Success?</span></div>
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div class="arrow-label">Success</div>
+        <div style="width:60px;height:2px;background:#333;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SWIM LANES ── -->
+  <div class="swimlane-container">
+
+    <!-- ADMIN LANE -->
+    <div class="lane">
+      <div class="lane-header">Admin</div>
+      <div class="lane-body">
+        <div class="node node-red">Admin<br>Dashboard</div>
+        <div class="arrow-down"></div>
+
+        <div style="display:flex; gap:8px; justify-content:center;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <div class="node node-red">Manage Buses<br>&amp; Routes</div>
+            <div class="arrow-down" style="height:14px;"></div>
+            <div class="node node-red">Assign Trips<br>&amp; Schedules</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <div class="node node-red">Manage<br>Stages</div>
+            <div class="arrow-down" style="height:14px;"></div>
+            <div class="node node-red">Crew<br>Management</div>
+          </div>
+        </div>
+
+        <div class="arrow-down"></div>
+        <div class="node node-red">View System<br>Reports</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Manage Bus<br>Type Fares</div>
+      </div>
+    </div>
+
+    <!-- CREW LANE -->
+    <div class="lane">
+      <div class="lane-header">Crew (Driver)</div>
+      <div class="lane-body">
+        <div class="node node-red">Crew<br>Dashboard</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">View Assigned<br>Bus &amp; Route</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Start Trip</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Issue ETM<br>Tickets</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Advance<br>Current Stage</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">View Passenger<br>Count</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Report<br>Delay</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">End Trip</div>
+      </div>
+    </div>
+
+    <!-- USER LANE -->
+    <div class="lane">
+      <div class="lane-header">User (Passenger)</div>
+      <div class="lane-body">
+        <div class="node node-red">User<br>Dashboard</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">View Available<br>Bus Routes</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Search Bus<br>/ Route</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Track Bus<br>Real-time</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">View Seat<br>Availability</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">Calculate<br>Factiare</div>
+        <div class="arrow-down"></div>
+        <div class="node node-red">View Delay<br>Notifications</div>
+      </div>
+    </div>
+
+  </div><!-- end swimlane-container -->
+
+  <!-- LOGOUT + END -->
+  <div style="display:flex; justify-content:center; flex-direction:column; align-items:center; padding:12px 0;">
+    <div class="arrow-down" style="height:20px;"></div>
+    <div class="node node-blue" style="width:100px;">Logout</div>
+    <div class="arrow-down" style="height:16px;"></div>
+    <div style="width:22px;height:22px;border:3px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+      <div class="end-circle-inner"></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
