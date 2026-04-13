@@ -76,9 +76,9 @@ export const getAllBuses = async (req, res) => {
 export const getBusById = async (req, res) => {
     try {
         const bus = await Bus.findById(req.params.id)
-            .populate('routeId')
+            .populate('routeId', 'routeName routeNumber polyline sourceCoordinates destinationCoordinates stops')
             .populate('driverId', 'name email phone')
-            .populate('currentTripId');
+            .populate('currentTripId', 'currentPassengers passengerDropoffs trackingMode delayMinutes delayReason');
 
         if (!bus) {
             return res.status(404).json({ success: false, message: 'Bus not found.' });

@@ -156,15 +156,25 @@ export const getAvailableSeats = async (req, res) => {
         if (!trip) return res.status(404).json({ success: false, message: 'Trip not found.' });
 
         const totalSeats = trip.busId?.capacity || 47;
-        const bookedSeats = trip.bookedSeats || [];
+        const bookedSeats = [...new Set(trip.bookedSeats || [])];
+        const occupiedCount = trip.currentPassengers || 0;
         const availableSeats = [];
         for (let i = 1; i <= totalSeats; i++) {
             if (!bookedSeats.includes(i)) availableSeats.push(i);
         }
+        const reservedCount = bookedSeats.length;
+        const availableCount = Math.max(0, totalSeats - (reservedCount + occupiedCount));
 
         res.json({
             success: true,
-            data: { totalSeats, bookedSeats, availableSeats, availableCount: availableSeats.length }
+            data: {
+                totalSeats,
+                bookedSeats,
+                reservedCount,
+                occupiedCount,
+                availableSeats,
+                availableCount
+            }
         });
     } catch (error) {
         console.error('Get available seats error:', error);
@@ -233,6 +243,9 @@ export const getTripReservations = async (req, res) => {
             seats.forEach(s => reservedSeatSet.add(s));
         }
         const reservedSeats = Array.from(reservedSeatSet).sort((a, b) => a - b);
+        const reservedCount = reservedSeats.length;
+        const occupiedCount = trip.currentPassengers || 0;
+        const availableCount = Math.max(0, totalSeats - (reservedCount + occupiedCount));
 
         res.json({
             success: true,
@@ -240,8 +253,10 @@ export const getTripReservations = async (req, res) => {
                 bookings: uniqueBookings,
                 totalSeats,
                 reservedSeats,
-                reservedCount: reservedSeats.length,
-                freeCount: Math.max(0, totalSeats - reservedSeats.length)
+                reservedCount,
+                occupiedCount,
+                freeCount: availableCount,
+                availableCount
             }
         });
     } catch (error) {

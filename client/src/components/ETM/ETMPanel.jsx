@@ -3,7 +3,7 @@ import { Ticket, MapPin, ArrowRight, CheckCircle } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 
-const ETMPanel = ({ currentTrip, myBus }) => {
+const ETMPanel = ({ currentTrip, myBus, onTicketIssued }) => {
     const [stages, setStages] = useState([]);
     const [fromStage, setFromStage] = useState(null);
     const [toStage, setToStage] = useState(null);
@@ -65,6 +65,7 @@ const ETMPanel = ({ currentTrip, myBus }) => {
                 toast.success(`Ticket issued: ${res.data.ticketId}`);
                 setFromStage(null); setToStage(null);
                 setFareInfo(null); setPassengerName(''); setPassengerPhone('');
+                if (onTicketIssued) onTicketIssued();
             }
         } catch (e) {
             toast.error(e.message || 'Failed to issue ticket');

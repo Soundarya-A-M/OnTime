@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Note: Update the Sitemap URL to match your exact production domain
+Sitemap: https://www.vidyamedu.in/sitemap.xml

@@ -88,19 +88,17 @@ const TrackBus = () => {
         fetchActiveBuses();
 
         // FIX #23: socket connection status tracking
-        const handleConnect = () => setIsConnected(true);
-        const handleDisconnect = () => {
-            setIsConnected(false);
-            toast.error('Lost real-time connection. Locations may be stale.', { id: 'track-disconnect', duration: 0 });
-        };
-        const handleReconnect = () => {
+        const handleConnect = () => {
             setIsConnected(true);
             toast.dismiss('track-disconnect');
             toast.success('Reconnected — live tracking resumed.', { duration: 3000 });
         };
+        const handleDisconnect = () => {
+            setIsConnected(false);
+            toast.error('Lost real-time connection. Locations may be stale.', { id: 'track-disconnect', duration: 0 });
+        };
 
         socket.on('connect', handleConnect);
-        socket.on('connect', handleReconnect);
         socket.on('disconnect', handleDisconnect);
 
         if (!socket.connected) socket.connect();
@@ -137,11 +135,59 @@ const TrackBus = () => {
         socket.on('trip:started', handleTripStatusChange);
         socket.on('trip:ended', handleTripStatusChange);
         socket.on('bus:stage-updated', handleTripStatusChange);
-        socket.on('bus:passenger-updated', () => {
-            fetchActiveBuses();
-            // Refresh seats for currently selected bus
-            if (selectedBusRef.current) fetchBusSeats(selectedBusRef.current);
-        });
+        
+        // Real-time passenger count update — fetch updated bus data from server
+        const handlePassengerUpdate = async (data) => {
+            try {
+                // Fetch the updated bus with latest trip data
+                const busRes = await api.get(`/buses/${data.busId}`);
+                if (busRes.success && busRes.data.bus) {
+                    const updatedBus = busRes.data.bus;
+                    const busIdStr = data.busId?.toString?.() || data.busId;
+                    
+                    // Update buses list
+                    setBuses(prevBuses =>
+                        prevBuses.map(bus => {
+                            const currentBusIdStr = bus._id?.toString?.() || bus._id;
+                            return currentBusIdStr === busIdStr ? updatedBus : bus;
+                        })
+                    );
+                    
+                    // Update selected bus if it matches
+                    if (selectedBusRef.current) {
+                        const selectedBusIdStr = selectedBusRef.current._id?.toString?.() || selectedBusRef.current._id;
+                        if (selectedBusIdStr === busIdStr) {
+                            setSelectedBus(updatedBus);
+                        }
+                    }
+                    
+                    // Refresh seats for the updated bus
+                    fetchBusSeats(updatedBus);
+                }
+            } catch (err) {
+                console.error('Failed to fetch updated bus data:', err);
+                // Fallback: at least update the state with the socket data
+                setBuses(prevBuses =>
+                    prevBuses.map(bus => {
+                        const busIdStr = data.busId?.toString?.() || data.busId;
+                        const currentBusIdStr = bus._id?.toString?.() || bus._id;
+                        if (currentBusIdStr === busIdStr && bus.currentTripId) {
+                            return {
+                                ...bus,
+                                currentTripId: {
+                                    ...bus.currentTripId,
+                                    currentPassengers: data.currentPassengers,
+                                    passengerDropoffs: data.passengerDropoffs
+                                }
+                              };
+                        }
+                        return bus;
+                    })
+                );
+            }
+        };
+        
+        socket.on('bus:passenger-updated', handlePassengerUpdate);
 
         return () => {
             socket.off('bus:location-updated');
@@ -149,9 +195,8 @@ const TrackBus = () => {
             socket.off('trip:started', handleTripStatusChange);
             socket.off('trip:ended', handleTripStatusChange);
             socket.off('bus:stage-updated', handleTripStatusChange);
-            socket.off('bus:passenger-updated', handleTripStatusChange);
+            socket.off('bus:passenger-updated', handlePassengerUpdate);
             socket.off('connect', handleConnect);
-            socket.off('connect', handleReconnect);
             socket.off('disconnect', handleDisconnect);
         };
     }, [recalculateETA]);
@@ -174,11 +219,23 @@ const TrackBus = () => {
         try {
             const res = await api.get(`/bookings/seats/${tripId}`);
             if (res.success) {
+                const totalSeats = res.data.totalSeats || bus.capacity || 47;
+                const reservedCount = typeof res.data.reservedCount === 'number'
+                    ? res.data.reservedCount
+                    : (res.data.bookedSeats?.length || 0);
+                const occupiedCount = res.data.occupiedCount || 0;
+                const availableCount = typeof res.data.availableCount === 'number'
+                    ? res.data.availableCount
+                    : Math.max(0, totalSeats - (reservedCount + occupiedCount));
+
                 setBusSeats(prev => ({
                     ...prev,
                     [bus._id]: {
                         bookedSeats: res.data.bookedSeats || [],
-                        totalSeats: res.data.totalSeats || bus.capacity || 47
+                        reservedCount,
+                        occupiedCount,
+                        availableCount,
+                        totalSeats
                     }
                 }));
             }
@@ -188,7 +245,18 @@ const TrackBus = () => {
         }
     }, []);
 
-    const handleBusClick = (bus) => {
+    const handleBusClick = async (bus) => {
+        // Fetch fresh bus data to ensure we have latest trip info (including currentPassengers)
+        try {
+            const res = await api.get(`/buses/${bus._id}`);
+            if (res.success && res.data.bus) {
+                bus = res.data.bus; // Use fresh data
+            }
+        } catch (err) {
+            console.error('Failed to fetch fresh bus data:', err);
+            // Fallback to using the bus from the list
+        }
+
         setSelectedBus(bus);
         setDelayInfo(null);
         setSidebarOpen(false); // close mobile drawer on selection
@@ -513,7 +581,7 @@ const TrackBus = () => {
                                                 <span className="text-indigo-300 font-semibold text-xs uppercase tracking-wide">Seat Layout</span>
                                                 {seatData && (
                                                     <span className="ml-auto text-[10px] text-gray-500">
-                                                        {seatData.bookedSeats.length} reserved · {seatData.totalSeats - seatData.bookedSeats.length} free
+                                                        {seatData.reservedCount} reserved · {seatData.occupiedCount} occupied · {seatData.availableCount} available
                                                     </span>
                                                 )}
                                             </div>

@@ -32,12 +32,20 @@ const DriverDashboard = () => {
         fetchMyBus();
     }, []);
 
-    // Fetch reservations whenever the Reserved tab is opened or currentTrip changes
+    // Fetch reservation/seat counts whenever the current trip changes
     useEffect(() => {
-        if (activeTab === 'reserved' && currentTrip) {
+        if (currentTrip) {
+            setReservations(null);
             fetchReservations(currentTrip._id);
         }
-    }, [activeTab, currentTrip]);
+    }, [currentTrip]);
+
+    // Refresh reservations when user explicitly opens the reserved tab
+    useEffect(() => {
+        if (activeTab === 'reserved' && currentTrip && !reservations) {
+            fetchReservations(currentTrip._id);
+        }
+    }, [activeTab, currentTrip, reservations]);
 
     const fetchReservations = async (tripId) => {
         setReservationsLoading(true);
@@ -306,7 +314,16 @@ const DriverDashboard = () => {
                 {activeTab === 'etm' && (
                     <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-6">
                         <h2 className="text-2xl font-bold text-white mb-4">Electronic Ticket Machine</h2>
-                        <ETMPanel currentTrip={currentTrip} myBus={myBus} />
+                        <ETMPanel 
+                            currentTrip={currentTrip} 
+                            myBus={myBus}
+                            onTicketIssued={() => {
+                                if (currentTrip) {
+                                    fetchReservations(currentTrip._id);
+                                    fetchCurrentTrip(myBus);
+                                }
+                            }}
+                        />
                     </div>
                 )}
 
@@ -351,9 +368,13 @@ const DriverDashboard = () => {
                                         <span className="text-indigo-300 font-bold text-lg leading-none">{reservations.reservedCount}</span>
                                         <span className="text-gray-400 text-xs">Reserved</span>
                                     </div>
+                                    <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-lg">
+                                        <span className="text-purple-300 font-bold text-lg leading-none">{reservations.occupiedCount}</span>
+                                        <span className="text-gray-400 text-xs">Occupied</span>
+                                    </div>
                                     <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 px-3 py-1.5 rounded-lg">
-                                        <span className="text-green-300 font-bold text-lg leading-none">{reservations.freeCount}</span>
-                                        <span className="text-gray-400 text-xs">Free</span>
+                                        <span className="text-green-300 font-bold text-lg leading-none">{reservations.availableCount}</span>
+                                        <span className="text-gray-400 text-xs">Available</span>
                                     </div>
                                     <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg">
                                         <span className="text-white font-bold text-lg leading-none">{reservations.totalSeats}</span>
@@ -459,14 +480,28 @@ const DriverDashboard = () => {
                                 <span className="text-white font-semibold">{myBus.capacity} seats</span>
                             </div>
                             {currentTrip && (
-                                <div className="flex justify-between bg-black/20 p-2 rounded border border-white/5">
-                                    <span className="text-gray-300 flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-blue-400" /> Passengers:</span>
-                                    {currentTrip.currentPassengers > myBus.capacity ? (
-                                        <span className="text-red-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({currentTrip.currentPassengers - myBus.capacity} standing)</span></span>
-                                    ) : (
-                                        <span className="text-green-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({myBus.capacity - currentTrip.currentPassengers} available)</span></span>
+                                <>
+                                    <div className="flex justify-between bg-black/20 p-2 rounded border border-white/5">
+                                        <span className="text-gray-300 flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-blue-400" /> Passengers:</span>
+                                        {currentTrip.currentPassengers > myBus.capacity ? (
+                                            <span className="text-red-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({currentTrip.currentPassengers - myBus.capacity} standing)</span></span>
+                                        ) : (
+                                            <span className="text-green-400 font-bold">{currentTrip.currentPassengers} / {myBus.capacity} <span className="text-xs font-normal">({myBus.capacity - currentTrip.currentPassengers} available)</span></span>
+                                        )}
+                                    </div>
+                                    {reservations && (
+                                        <>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-300">Reserved:</span>
+                                                <span className="text-white font-semibold">{reservations.reservedCount} seats</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-300">Available:</span>
+                                                <span className="text-white font-semibold">{reservations.availableCount} seats</span>
+                                            </div>
+                                        </>
                                     )}
-                                </div>
+                                </>
                             )}
                             <div className="flex justify-between">
                                 <span className="text-gray-300">Status:</span>

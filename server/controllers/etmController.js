@@ -124,9 +124,10 @@ export const issueETMTicket = async (req, res) => {
 
         const io = getIO();
         if (io) {
+            const busId = trip.busId?._id || trip.busId;
             io.emit('bus:passenger-updated', {
                 tripId: trip._id,
-                busId: trip.busId._id,
+                busId: busId,
                 currentPassengers: trip.currentPassengers,
                 passengerDropoffs: trip.passengerDropoffs
             });
