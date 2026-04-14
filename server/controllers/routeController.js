@@ -1,4 +1,5 @@
 import Route from '../models/Route.js';
+import Stage from '../models/Stage.js';
 
 // Create new route (Admin only)
 export const createRoute = async (req, res) => {
@@ -51,7 +52,16 @@ export const getAllRoutes = async (req, res) => {
             isActive: isActive === 'false' ? false : true
         };
 
-        const routes = await Route.find(filter).sort({ routeName: 1 });
+        const routesDoc = await Route.find(filter).sort({ routeName: 1 });
+        
+        // Fetch stage counts for all routes
+        const routes = await Promise.all(routesDoc.map(async (route) => {
+            const count = await Stage.countDocuments({ routeId: route._id });
+            return {
+                ...route.toObject(),
+                stageCount: count
+            };
+        }));
 
         res.json({
             success: true,

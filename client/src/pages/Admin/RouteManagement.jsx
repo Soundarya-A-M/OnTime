@@ -34,6 +34,45 @@ const RouteManagement = () => {
   const [editForm, setEditForm] = useState({ routeName:'', routeNumber:'' });
   const [deleteConfirm, setDeleteConfirm] = useState(null); // route id to confirm delete
 
+  // Map Click state
+  const [mapClickMode, setMapClickMode] = useState(null); // 'source' | 'dest' | null
+  const handleMapClickRef = useRef(null);
+
+  useEffect(() => {
+    handleMapClickRef.current = async (e) => {
+        const mode = mapClickMode;
+        if (!mode) return;
+
+        const { lng, lat } = e.lngLat;
+        try {
+            const token = import.meta.env.VITE_MAPBOX_TOKEN || '';
+            const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&country=IN`;
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            let place;
+            if (data.features && data.features.length > 0) {
+                const f = data.features[0];
+                place = {
+                    id: f.id, name: f.text, latitude: lat, longitude: lng,
+                    displayName: f.place_name, type: f.place_type.includes('poi') ? 'bus_stop' : 'city'
+                };
+            } else {
+                place = { id: `custom-${Date.now()}`, name: `Map Location`, latitude: lat, longitude: lng, displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, type: 'city' };
+            }
+
+            if (mode === 'source') {
+                selectSource(place);
+            } else if (mode === 'dest') {
+                selectDest(place);
+            }
+            setMapClickMode(null);
+        } catch (error) {
+            toast.error('Failed to get location from map');
+        }
+    };
+  });
+
   useEffect(() => { fetchRoutes(); initMap(); }, []);
 
   useEffect(() => {
@@ -67,6 +106,12 @@ const RouteManagement = () => {
         center: [77.5946, 12.9716], zoom: 7,
       });
       mbMapRef.current.addControl(new mapboxgl.NavigationControl(), 'top-left');
+
+      mbMapRef.current.on('click', (e) => {
+        if (handleMapClickRef.current) {
+            handleMapClickRef.current(e);
+        }
+      });
     }
   };
 
@@ -314,7 +359,13 @@ const RouteManagement = () => {
 
             {/* Source */}
             <div className="relative">
-              <label className="block text-gray-300 text-sm mb-1"><span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Source City *</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-gray-300 text-sm"><span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-2"></span>Source City *</label>
+                <button type="button" onClick={() => setMapClickMode(mapClickMode === 'source' ? null : 'source')}
+                  className={`text-xs px-2 py-1 rounded-md border transition ${mapClickMode === 'source' ? 'bg-blue-500 border-blue-400 text-white shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}>
+                  {mapClickMode === 'source' ? 'Click on map...' : '📍 Pick on Map'}
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                 <input type="text" value={sourceSearch}
@@ -331,7 +382,13 @@ const RouteManagement = () => {
 
             {/* Destination */}
             <div className="relative">
-              <label className="block text-gray-300 text-sm mb-1"><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>Destination City *</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-gray-300 text-sm"><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>Destination City *</label>
+                <button type="button" onClick={() => setMapClickMode(mapClickMode === 'dest' ? null : 'dest')}
+                  className={`text-xs px-2 py-1 rounded-md border transition ${mapClickMode === 'dest' ? 'bg-red-500 border-red-400 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}>
+                  {mapClickMode === 'dest' ? 'Click on map...' : '📍 Pick on Map'}
+                </button>
+              </div>
               <div className="relative">
                 <Search className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                 <input type="text" value={destSearch}
@@ -376,8 +433,8 @@ const RouteManagement = () => {
           </div>
 
           {/* Map */}
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-3 overflow-hidden" style={{ height:'500px' }}>
-            <div ref={mapRef} style={{ width:'100%', height:'100%', borderRadius:'12px' }}></div>
+          <div className={`bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-3 overflow-hidden transition-all ${mapClickMode ? 'ring-2 ring-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.4)]' : ''}`} style={{ height:'500px' }}>
+            <div ref={mapRef} style={{ width:'100%', height:'100%', borderRadius:'12px', cursor: mapClickMode ? 'crosshair' : 'grab' }}></div>
           </div>
         </div>
 

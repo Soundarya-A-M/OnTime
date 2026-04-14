@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bus, Route, Users, Activity, Map, MapPin, DollarSign, Search, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import api from '../../config/api';
 import toast from 'react-hot-toast';
 
@@ -17,6 +18,14 @@ const AdminDashboard = () => {
     const [busSearch, setBusSearch] = useState('');
     const [routeSearch, setRouteSearch] = useState('');
     const [activeModal, setActiveModal] = useState(null); // 'activeBuses' | 'activeTrips' | null
+
+    // Edit Bus State
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [currentEditBus, setCurrentEditBus] = useState(null);
+    const [editForm, setEditForm] = useState({ routeId: '', driverId: '', capacity: 40, status: 'active', busType: 'Ordinary' });
+    const [drivers, setDrivers] = useState([]);
+    const [busTypes, setBusTypes] = useState(['Ordinary', 'Express', 'AC']);
+    const [savingBus, setSavingBus] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -59,6 +68,59 @@ const AdminDashboard = () => {
             toast.error('Failed to fetch data');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const openEditBus = async (bus) => {
+        setCurrentEditBus(bus);
+        setEditForm({
+            routeId: bus.routeId?._id || '',
+            driverId: bus.driverId?._id || '',
+            capacity: bus.capacity || 40,
+            status: bus.status || 'active',
+            busType: bus.busType || 'Ordinary'
+        });
+        setEditModalOpen(true);
+        if (drivers.length === 0) {
+            try {
+                const [driversRes, busTypesRes] = await Promise.all([
+                    api.get('/auth/users?role=driver'),
+                    api.get('/bus-types')
+                ]);
+                if (driversRes.success) setDrivers(driversRes.data.users);
+                if (busTypesRes.success && busTypesRes.data.fares.length > 0) {
+                    setBusTypes([...new Set(busTypesRes.data.fares.map(f => f.busType))]);
+                }
+            } catch (error) {
+                console.error("Failed to load edit dependencies", error);
+            }
+        }
+    };
+
+    const handleSaveBusEdit = async (e) => {
+        e.preventDefault();
+        setSavingBus(true);
+        try {
+            const res = await api.put(`/buses/${currentEditBus._id}`, {
+               routeId: editForm.routeId || null,
+               capacity: editForm.capacity,
+               status: editForm.status,
+               busType: editForm.busType
+            });
+            if (res.success) {
+                const currentDriverId = currentEditBus.driverId?._id || currentEditBus.driverId || '';
+                const newDriverId = editForm.driverId;
+                if (currentDriverId !== newDriverId) {
+                   await api.put(`/buses/${currentEditBus._id}/driver`, { driverId: newDriverId || null });
+                }
+                toast.success('Bus updated successfully');
+                setEditModalOpen(false);
+                fetchData();
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to update bus');
+        } finally {
+            setSavingBus(false);
         }
     };
 
@@ -174,7 +236,9 @@ const AdminDashboard = () => {
                                         <th className="text-left py-3 px-4 text-gray-300 font-medium">Bus Number</th>
                                         <th className="text-left py-3 px-4 text-gray-300 font-medium">Route</th>
                                         <th className="text-left py-3 px-4 text-gray-300 font-medium">Driver</th>
+                                        <th className="text-left py-3 px-4 text-gray-300 font-medium">Current Stage</th>
                                         <th className="text-left py-3 px-4 text-gray-300 font-medium">Status</th>
+                                        <th className="text-left py-3 px-4 text-gray-300 font-medium">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -190,6 +254,7 @@ const AdminDashboard = () => {
                                             <td className="py-3 px-4 text-white font-medium">{bus.busNumber}</td>
                                             <td className="py-3 px-4 text-gray-300">{bus.routeId?.routeName || 'Not assigned'}</td>
                                             <td className="py-3 px-4 text-gray-300">{bus.driverId?.name || 'Not assigned'}</td>
+                                            <td className="py-3 px-4 text-gray-300">{bus.currentTripId?.currentStageName || '—'}</td>
                                             <td className="py-3 px-4">
                                                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${bus.status === 'active' ? 'bg-green-500/20 text-green-300' :
                                                         bus.status === 'maintenance' ? 'bg-yellow-500/20 text-yellow-300' :
@@ -197,6 +262,11 @@ const AdminDashboard = () => {
                                                     }`}>
                                                     {bus.status}
                                                 </span>
+                                            </td>
+                                            <td className="py-3 px-4">
+                                                <button onClick={() => openEditBus(bus)} className="p-1.5 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition" title="Edit Bus">
+                                                    <Pencil className="w-4 h-4" />
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
@@ -244,7 +314,7 @@ const AdminDashboard = () => {
                                         <tr key={route._id} className="border-b border-white/5 hover:bg-white/5">
                                             <td className="py-3 px-4 text-white font-medium">{route.routeNumber}</td>
                                             <td className="py-3 px-4 text-gray-300">{route.routeName}</td>
-                                            <td className="py-3 px-4 text-gray-300">{route.stops?.length || 0} stops</td>
+                                            <td className="py-3 px-4 text-gray-300">{route.stageCount !== undefined ? route.stageCount : (route.stops?.length || 0)} stops</td>
                                             <td className="py-3 px-4 text-gray-300">{route.distance} km</td>
                                         </tr>
                                     ))}
@@ -287,6 +357,9 @@ const AdminDashboard = () => {
                                                     <div className="text-sm text-gray-400">
                                                         <span className="block"><strong className="text-gray-300">Route:</strong> {bus.routeId?.routeName || 'Unassigned'}</span>
                                                         <span className="block"><strong className="text-gray-300">Driver:</strong> {bus.driverId?.name || 'Unassigned'}</span>
+                                                        {bus.currentTripId?.currentStageName && (
+                                                            <span className="block"><strong className="text-gray-300">Stage:</strong> {bus.currentTripId.currentStageName}</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
@@ -303,6 +376,103 @@ const AdminDashboard = () => {
                                     </p>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Bus Modal */}
+            {editModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-slate-800 border border-white/20 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="flex justify-between items-center p-6 border-b border-white/10">
+                            <h2 className="text-2xl font-bold text-white">Edit Bus {currentEditBus?.busNumber}</h2>
+                            <button 
+                                onClick={() => setEditModalOpen(false)}
+                                className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <form onSubmit={handleSaveBusEdit} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Route</label>
+                                    <select
+                                        value={editForm.routeId}
+                                        onChange={(e) => setEditForm({ ...editForm, routeId: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                                    >
+                                        <option value="" className="bg-slate-800">Unassigned</option>
+                                        {routes.map(r => (
+                                            <option key={r._id} value={r._id} className="bg-slate-800">{r.routeName} ({r.routeNumber})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Driver</label>
+                                    <select
+                                        value={editForm.driverId}
+                                        onChange={(e) => setEditForm({ ...editForm, driverId: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                                    >
+                                        <option value="" className="bg-slate-800">Unassigned</option>
+                                        {drivers.map(d => (
+                                            <option key={d._id} value={d._id} className="bg-slate-800">{d.name} ({d.email})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                                    <select
+                                        value={editForm.status}
+                                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                                    >
+                                        <option value="active" className="bg-slate-800">Active</option>
+                                        <option value="inactive" className="bg-slate-800">Inactive</option>
+                                        <option value="maintenance" className="bg-slate-800">Maintenance</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Bus Type</label>
+                                    <select
+                                        value={editForm.busType}
+                                        onChange={(e) => setEditForm({ ...editForm, busType: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                                    >
+                                        {busTypes.map(t => (
+                                            <option key={t} value={t} className="bg-slate-800">{t}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Capacity</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={editForm.capacity}
+                                        onChange={(e) => setEditForm({ ...editForm, capacity: Number(e.target.value) })}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-purple-500"
+                                    />
+                                </div>
+                                <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-white/10">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setEditModalOpen(false)}
+                                        className="px-4 py-2 text-gray-300 hover:text-white transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        type="submit" 
+                                        disabled={savingBus}
+                                        className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-medium transition disabled:opacity-50"
+                                    >
+                                        {savingBus ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
