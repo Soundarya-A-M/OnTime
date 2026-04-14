@@ -534,11 +534,9 @@ const DriverDashboard = () => {
                                         <span className="inline-block w-3 h-3 rounded-full bg-green-400 shadow-lg shadow-green-400/50"></span>
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">From</p>
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">Origin</p>
                                         <p className="text-white font-bold text-sm truncate">
-                                            {isReversed
-                                                ? routeStages[routeStages.length - 1]?.stageName
-                                                : routeStages[0]?.stageName}
+                                            {routeStages[0]?.stageName}
                                         </p>
                                     </div>
                                 </div>
@@ -547,34 +545,24 @@ const DriverDashboard = () => {
                                 <button
                                     onClick={() => setIsReversed(v => !v)}
                                     title="Swap direction (return journey)"
-                                    className="mx-3 flex-shrink-0 group flex flex-col items-center gap-0.5"
+                                    className="mx-3 flex-shrink-0 group flex flex-col items-center justify-center pt-2 pb-2"
                                 >
-                                    <span className={`text-[11px] font-mono tracking-tighter transition-all duration-300 ${
-                                        isReversed ? 'text-blue-400' : 'text-purple-400'
-                                    }`}>
-                                        {isReversed ? '←————' : '————→'}
-                                    </span>
-                                    <div className={`p-1.5 rounded-full border transition-all duration-300 group-hover:scale-110 ${
+                                    <div className={`px-4 py-1.5 rounded-full border transition-all duration-300 group-hover:scale-105 ${
                                         isReversed
                                             ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-                                            : 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                                            : 'bg-green-500/20 border-green-500/50 text-green-400'
                                     }`}>
-                                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                                        <span className="font-mono tracking-tighter text-base font-bold flex items-center justify-center">
+                                            {isReversed ? '<----------' : '---------->'}
+                                        </span>
                                     </div>
-                                    <span className={`text-[11px] font-mono tracking-tighter transition-all duration-300 ${
-                                        isReversed ? 'text-purple-400' : 'text-blue-400'
-                                    }`}>
-                                        {isReversed ? '————→' : '←————'}
-                                    </span>
                                 </button>
 
                                 <div className="flex items-center gap-3 flex-1 min-w-0 justify-end">
                                     <div className="min-w-0 text-right">
-                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">To</p>
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wider">Destination</p>
                                         <p className="text-white font-bold text-sm truncate">
-                                            {isReversed
-                                                ? routeStages[0]?.stageName
-                                                : routeStages[routeStages.length - 1]?.stageName}
+                                            {routeStages[routeStages.length - 1]?.stageName}
                                         </p>
                                     </div>
                                     <div className="flex flex-col items-center">
