@@ -49,8 +49,14 @@ function App() {
             <Navbar />
 
             <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<LandingPage />} />
+                {/* Public / Redirect Routes */}
+                <Route path="/" element={
+                    isAuthenticated ? (
+                        user?.role === 'driver' ? <Navigate to="/driver/dashboard" replace /> :
+                        user?.role === 'admin' ? <Navigate to="/admin/dashboard" replace /> :
+                        <LandingPage />
+                    ) : <LandingPage />
+                } />
                 <Route path="/login" element={isAuthenticated ? <Navigate to={getHomePath()} /> : <Login />} />
                 <Route path="/register" element={isAuthenticated ? <Navigate to={getHomePath()} /> : <Register />} />
 
