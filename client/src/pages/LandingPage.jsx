@@ -1,9 +1,103 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Search, Calendar, Loader2, Zap, Shield } from 'lucide-react';
+import { MapPin, Search, Calendar, Loader2, Zap, Shield, ChevronDown, X } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import api from '../config/api';
+
+// ─── Stage Dropdown Component ─────────────────────────────────────────────────
+const StageDropdown = ({ id, placeholder, value, onChange, options, disabled }) => {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const ref = useRef(null);
+    const inputRef = useRef(null);
+
+    // Close on outside click
+    useEffect(() => {
+        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Sync query with external value changes
+    useEffect(() => { if (!open) setQuery(value); }, [value, open]);
+
+    const filtered = options.filter(s =>
+        s.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 60); // cap at 60 for performance
+
+    const handleSelect = (name) => {
+        onChange(name);
+        setQuery(name);
+        setOpen(false);
+    };
+
+    const handleClear = (e) => {
+        e.stopPropagation();
+        onChange('');
+        setQuery('');
+        inputRef.current?.focus();
+    };
+
+    const handleFocus = () => {
+        if (!disabled) {
+            setQuery('');
+            setOpen(true);
+        }
+    };
+
+    return (
+        <div ref={ref} className="relative w-full md:w-64" id={id}>
+            <div className={`flex items-center bg-white/5 border ${open ? 'border-blue-400 ring-2 ring-blue-500/30' : 'border-white/10'} rounded-lg overflow-hidden transition-all duration-200`}>
+                <MapPin className="w-4 h-4 text-blue-400 ml-3 flex-shrink-0" />
+                <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder={disabled ? 'Select From first' : placeholder}
+                    value={open ? query : value}
+                    onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                    onFocus={handleFocus}
+                    disabled={disabled}
+                    className="flex-1 px-3 py-3 bg-transparent text-white placeholder-gray-400 focus:outline-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                {value ? (
+                    <button onClick={handleClear} className="p-2 text-gray-400 hover:text-white transition">
+                        <X className="w-4 h-4" />
+                    </button>
+                ) : (
+                    <ChevronDown className={`w-4 h-4 text-gray-400 mr-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+                )}
+            </div>
+
+            {open && (
+                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-slate-800/95 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl overflow-hidden animate-in">
+                    {filtered.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-gray-400 text-sm">
+                            {options.length === 0 ? 'No stages available' : 'No matches found'}
+                        </div>
+                    ) : (
+                        <div className="max-h-60 overflow-y-auto custom-scroll">
+                            {filtered.map((name, idx) => (
+                                <button
+                                    key={idx}
+                                    type="button"
+                                    onMouseDown={() => handleSelect(name)}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-blue-500/20 transition flex items-center gap-2 group"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition" />
+                                    {name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <div className="px-4 py-2 border-t border-white/5 text-xs text-gray-500">
+                        {filtered.length} stop{filtered.length !== 1 ? 's' : ''} {options.length > 60 && filtered.length === 60 ? '(showing top 60)' : ''}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const LandingPage = () => {
     const { isAuthenticated } = useAuthStore();
@@ -22,6 +116,36 @@ const LandingPage = () => {
         }).catch(() => {});
     }, []);
 
+    // ── Derive all unique stop names from embedded route stops ────────────────
+    const fromOptions = useMemo(() => {
+        const names = new Set();
+        allRoutes.forEach(route => {
+            (route.stops || []).forEach(s => { if (s.name) names.add(s.name); });
+        });
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [allRoutes]);
+
+    // ── "To" options: stops in routes that pass through the selected "From" ───
+    const toOptions = useMemo(() => {
+        if (!fromPlace) return [];
+        const names = new Set();
+        allRoutes.forEach(route => {
+            const stops = route.stops || [];
+            const hasFrom = stops.some(s => s.name?.toLowerCase() === fromPlace.toLowerCase());
+            if (hasFrom) {
+                stops.forEach(s => { if (s.name && s.name.toLowerCase() !== fromPlace.toLowerCase()) names.add(s.name); });
+            }
+        });
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [allRoutes, fromPlace]);
+
+    // Reset 'To' when 'From' changes
+    const handleFromChange = (val) => {
+        setFromPlace(val);
+        if (toPlace) setToPlace('');
+        setShowRoutes(false);
+    };
+
     const getNextDays = () => {
         const days = [];
         for (let i = 0; i < 5; i++) {
@@ -33,24 +157,19 @@ const LandingPage = () => {
     };
 
     const handleSearch = async () => {
-        if (!isAuthenticated) {
-            toast.error('Please login to search routes');
-            navigate('/login');
-            return;
-        }
-        if (!fromPlace.trim()) { toast.error('Please enter starting location'); return; }
+        if (!fromPlace.trim()) { toast.error('Please select a starting stop'); return; }
 
         setSearching(true);
         try {
             const from = fromPlace.trim().toLowerCase();
             const to = toPlace.trim().toLowerCase();
 
+            // Match routes whose stops[] contain the selected From (and optionally To)
             const results = allRoutes.filter(route => {
-                const sourceName = (route.sourceCity || route.routeName || '').toLowerCase();
-                const destName = (route.destinationCity || route.routeName || '').toLowerCase();
+                const stops = (route.stops || []).map(s => (s.name || '').toLowerCase());
                 const routeName = (route.routeName || '').toLowerCase();
-                const matchFrom = sourceName.includes(from) || routeName.includes(from);
-                const matchTo = !to || destName.includes(to) || routeName.includes(to);
+                const matchFrom = stops.some(s => s.includes(from)) || routeName.includes(from);
+                const matchTo = !to || stops.some(s => s.includes(to)) || routeName.includes(to);
                 return matchFrom && matchTo;
             });
 
@@ -107,21 +226,37 @@ const LandingPage = () => {
                         <p className="text-gray-300 text-center mb-8">Search live routes powered by real-time data</p>
 
                         <div className="flex flex-col md:flex-row gap-4 items-center justify-center mb-6">
-                            <input type="text" placeholder="From" value={fromPlace}
-                                onChange={(e) => setFromPlace(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            <span className="text-white text-2xl hidden md:block">→</span>
-                            <input type="text" placeholder="To" value={toPlace}
-                                onChange={(e) => setToPlace(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                className="w-full md:w-64 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <StageDropdown
+                                id="from-stop-dropdown"
+                                placeholder="From — select a stop"
+                                value={fromPlace}
+                                onChange={handleFromChange}
+                                options={fromOptions}
+                            />
+                            <span className="text-white text-2xl hidden md:block font-thin opacity-60">→</span>
+                            <StageDropdown
+                                id="to-stop-dropdown"
+                                placeholder="To — select a stop"
+                                value={toPlace}
+                                onChange={(val) => { setToPlace(val); setShowRoutes(false); }}
+                                options={toOptions}
+                                disabled={!fromPlace}
+                            />
                             <button onClick={handleSearch} disabled={searching}
                                 className="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-medium hover:from-blue-600 hover:to-cyan-600 transition flex items-center justify-center gap-2 disabled:opacity-70">
                                 {searching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                                 {searching ? 'Searching...' : 'Search'}
                             </button>
                         </div>
+                        {/* Helper hint for unauthenticated users */}
+                        {!isAuthenticated && (fromPlace || toPlace) && (
+                            <p className="text-center text-sm text-blue-300/70 -mt-2 mb-4">
+                                <span className="inline-flex items-center gap-1">
+                                    <MapPin className="w-3.5 h-3.5" />
+                                    <Link to="/login" className="underline hover:text-blue-300 transition">Log in</Link> to search and view available buses
+                                </span>
+                            </p>
+                        )}
 
                         {/* Date Selector */}
                         <div className="bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
@@ -154,8 +289,9 @@ const LandingPage = () => {
                                             <th className="text-left py-3 px-3 text-gray-300 font-medium">Route #</th>
                                             <th className="text-left py-3 px-3 text-gray-300 font-medium">Route Name</th>
                                             <th className="text-left py-3 px-3 text-gray-300 font-medium">Distance</th>
-                                            <th className="text-left py-3 px-3 text-gray-300 font-medium">Active Buses</th>
+                                            <th className="text-left py-3 px-3 text-gray-300 font-medium">Buses</th>
                                             <th className="text-left py-3 px-3 text-gray-300 font-medium">Status</th>
+                                            <th className="text-left py-3 px-3 text-gray-300 font-medium">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -170,13 +306,36 @@ const LandingPage = () => {
                                                         {route.hasLiveTrip ? '🟢 Live' : route.activeBuses?.length > 0 ? 'Scheduled' : 'No buses'}
                                                     </span>
                                                 </td>
+                                                <td className="py-3 px-3">
+                                                    {isAuthenticated ? (
+                                                        <Link
+                                                            to={`/book?routeId=${route._id}`}
+                                                            className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs rounded-lg hover:from-blue-600 hover:to-cyan-600 transition font-medium"
+                                                        >
+                                                            Book Now
+                                                        </Link>
+                                                    ) : (
+                                                        <Link
+                                                            to="/login"
+                                                            className="px-3 py-1.5 bg-white/10 border border-white/20 text-white text-xs rounded-lg hover:bg-white/20 transition font-medium"
+                                                        >
+                                                            Login to Book
+                                                        </Link>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
-                                <p className="text-gray-400 text-xs mt-3 text-center">
-                                    {routes.length} route(s) found. <Link to="/track" className="text-blue-400 underline">Track live buses →</Link>
-                                </p>
+                                <div className="mt-4 flex items-center justify-between flex-wrap gap-2">
+                                    <p className="text-gray-400 text-xs">{routes.length} route(s) found</p>
+                                    <div className="flex gap-3">
+                                        <Link to="/track" className="text-blue-400 underline text-xs hover:text-blue-300 transition">Track live buses →</Link>
+                                        {!isAuthenticated && (
+                                            <Link to="/login" className="text-cyan-400 underline text-xs hover:text-cyan-300 transition">Login to book tickets →</Link>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
